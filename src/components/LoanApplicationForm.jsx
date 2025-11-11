@@ -32,7 +32,7 @@ export function LoanApplicationForm() {
     setSelectedCustomer(customer);
     setFormData(prev => ({
       ...prev,
-      customerId: customer.id,
+      customerId: customer.autoNumber,
       customerName: customer.name,
       customerPhone: customer.phone,
       dealer: customer.dealer,

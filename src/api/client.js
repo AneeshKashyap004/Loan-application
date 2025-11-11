@@ -2,7 +2,8 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787/api';
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', ...(options.headers || {}) },
     ...options,
   });
   if (!res.ok) {

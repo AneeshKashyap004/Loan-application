@@ -70,7 +70,15 @@ app.get('/api/loans', (req, res) => {
 });
 
 app.get('/api/loans/customer/:customerId', (req, res) => {
-  const rows = db.prepare('SELECT * FROM loanApplications WHERE customerId = ? ORDER BY id DESC').all(req.params.customerId);
+  const key = req.params.customerId;
+  const cust = db.prepare('SELECT * FROM customers WHERE id = ? OR autoNumber = ?').get(key, key);
+  if (!cust) {
+    const rows = db.prepare('SELECT * FROM loanApplications WHERE customerId = ? ORDER BY id DESC').all(key);
+    return res.json(rows);
+  }
+  const rows = db.prepare(
+    'SELECT * FROM loanApplications WHERE customerId IN (?, ?) OR vehicleNumber = ? ORDER BY id DESC'
+  ).all(cust.autoNumber, String(cust.id), cust.vehicleNumber || '');
   res.json(rows);
 });
 
@@ -106,7 +114,15 @@ app.get('/api/repayments', (req, res) => {
 });
 
 app.get('/api/repayments/customer/:customerId', (req, res) => {
-  const rows = db.prepare('SELECT * FROM repayments WHERE customerId = ? ORDER BY id DESC').all(req.params.customerId);
+  const key = req.params.customerId;
+  const cust = db.prepare('SELECT * FROM customers WHERE id = ? OR autoNumber = ?').get(key, key);
+  if (!cust) {
+    const rows = db.prepare('SELECT * FROM repayments WHERE customerId = ? ORDER BY id DESC').all(key);
+    return res.json(rows);
+  }
+  const rows = db.prepare(
+    'SELECT * FROM repayments WHERE customerId IN (?, ?) OR vehicleNumber = ? ORDER BY id DESC'
+  ).all(cust.autoNumber, String(cust.id), cust.vehicleNumber || '');
   res.json(rows);
 });
 
