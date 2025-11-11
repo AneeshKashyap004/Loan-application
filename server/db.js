@@ -35,6 +35,7 @@ export function init() {
       customerPhone TEXT,
       dealer TEXT NOT NULL,
       amount REAL NOT NULL,
+      emiAmount REAL,
       tenure INTEGER NOT NULL,
       loanDate TEXT NOT NULL,
       dueDay INTEGER,
@@ -83,6 +84,9 @@ export function migrate() {
   }
   if (!hasColumn('loanApplications', 'dueDay')) {
     db.exec('ALTER TABLE loanApplications ADD COLUMN dueDay INTEGER');
+  }
+  if (!hasColumn('loanApplications', 'emiAmount')) {
+    db.exec('ALTER TABLE loanApplications ADD COLUMN emiAmount REAL');
   }
 
   // repayments

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDateDMY } from '@/utils/date';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { Alert, AlertDescription, AlertTitle } from './ui/Alert';
@@ -265,7 +266,7 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.dealer}</td>
                     <td className="py-2 pr-4">₹{c.loanAmount}</td>
                     <td className="py-2 pr-4">{c.documentVerified ? 'Yes' : 'No'}</td>
-                    <td className="py-2 pr-4">{new Date(c.createdAt).toLocaleDateString()}</td>
+                    <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                   </tr>
                 ))
               )}

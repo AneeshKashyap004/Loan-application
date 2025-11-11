@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, FileText, CheckCircle, Clock, CalendarDays, TrendingUp } from 'lucide-react';
 import { customersApi, loansApi, repaymentsApi } from '@/api/client';
+import { formatDateDMY } from '@/utils/date';
 import { DataModal } from './DataModal';
 
 function StatCard({ title, value, icon: Icon, iconBgColor, iconColor, onClick }) {
@@ -86,7 +87,7 @@ export function Dashboard() {
         { key: 'name', header: 'Name' },
         { key: 'phone', header: 'Phone' },
         { key: 'address', header: 'Address' },
-        { key: 'createdAt', header: 'Join Date', format: (date) => new Date(date).toLocaleDateString() }
+        { key: 'createdAt', header: 'Join Date', format: (date) => formatDateDMY(date) }
       ],
       searchKey: 'name'
     });
@@ -107,7 +108,7 @@ export function Dashboard() {
         { key: 'vehicleNumber', header: 'Vehicle' },
         { key: 'amount', header: 'Amount', format: (amt) => `₹${Number(amt).toLocaleString()}` },
         { key: 'hoa', header: 'HOA' },
-        { key: 'loanDate', header: 'Due Date', format: (date) => new Date(date).toLocaleDateString() }
+        { key: 'loanDate', header: 'Due Date', format: (date) => formatDateDMY(date) }
       ],
       searchKey: 'customerName'
     });
@@ -124,7 +125,7 @@ export function Dashboard() {
         { key: 'id', header: 'Loan ID' },
         { key: 'customerName', header: 'Customer' },
         { key: 'amount', header: 'Amount', format: (amt) => `₹${Number(amt).toLocaleString()}` },
-        { key: 'disbursementDate', header: 'Disbursed On', format: (date) => date ? new Date(date).toLocaleDateString() : 'N/A' },
+        { key: 'disbursementDate', header: 'Disbursed On', format: (date) => date ? formatDateDMY(date) : 'N/A' },
         { key: 'repaymentTerm', header: 'Term' }
       ],
       searchKey: 'customerName'
@@ -171,10 +172,10 @@ export function Dashboard() {
         { key: 'autoNumber', header: 'Customer ID' },
         { key: 'customerName', header: 'Customer' },
         { key: 'vehicleNumber', header: 'Vehicle' },
-        { key: 'dueDate', header: 'Due Date', format: (date) => new Date(date).toLocaleDateString() },
+        { key: 'dueDate', header: 'Due Date', format: (date) => formatDateDMY(date) },
         { key: 'dueAmount', header: 'Due Amount', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
         { key: 'paidAmount', header: 'Paid', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
-        { key: 'paymentDate', header: 'Paid On', format: (date) => date ? new Date(date).toLocaleDateString() : 'Pending' },
+        { key: 'paymentDate', header: 'Paid On', format: (date) => date ? formatDateDMY(date) : 'Pending' },
       ],
       searchKey: 'customerName'
     });

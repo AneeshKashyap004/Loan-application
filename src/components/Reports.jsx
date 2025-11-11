@@ -3,6 +3,7 @@ import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { Download, Search } from 'lucide-react';
 import { customersApi, loansApi, repaymentsApi } from '@/api/client';
+import { formatDateDMY } from '@/utils/date';
 import { exportLoanApplicationsToCSV, exportRepaymentsToCSV } from '@/utils/csvExport';
 
 export function Reports() {
@@ -139,7 +140,7 @@ export function Reports() {
                         <td className="px-3 py-2">{l.vehicleNumber}</td>
                         <td className="px-3 py-2">{l.amount}</td>
                         <td className="px-3 py-2">{l.tenure}</td>
-                        <td className="px-3 py-2">{l.loanDate?.slice(0,10)}</td>
+                        <td className="px-3 py-2">{formatDateDMY(l.loanDate)}</td>
                         <td className="px-3 py-2">{l.hoa || '-'}</td>
                         <td className="px-3 py-2">{l.dueDay ?? '-'}</td>
                       </tr>
@@ -169,7 +170,7 @@ export function Reports() {
                   <tbody>
                     {repayments.map(r => (
                       <tr key={r.id} className="border-t">
-                        <td className="px-3 py-2">{r.dueDate?.slice(0,10)}</td>
+                        <td className="px-3 py-2">{formatDateDMY(r.dueDate)}</td>
                         <td className="px-3 py-2">{r.dueAmount}</td>
                         <td className="px-3 py-2">{r.fine}</td>
                         <td className="px-3 py-2">{r.paidAmount}</td>

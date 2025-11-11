@@ -15,6 +15,7 @@ export function LoanApplicationForm() {
     vehicleNumber: '',
     dealer: '',
     amount: '',
+    emiAmount: '',
     tenure: '',
     loanDate: format(new Date(), 'yyyy-MM-dd'),
     dueDay: '',
@@ -77,6 +78,7 @@ export function LoanApplicationForm() {
         customerPhone: formData.customerPhone,
         dealer: formData.dealer,
         amount: parseFloat(formData.amount),
+        emiAmount: formData.emiAmount === '' ? null : parseFloat(formData.emiAmount),
         tenure: parseInt(formData.tenure),
         loanDate: new Date(formData.loanDate).toISOString(),
         dueDay: dueDayNum,
@@ -96,6 +98,7 @@ export function LoanApplicationForm() {
         vehicleNumber: '',
         dealer: '',
         amount: '',
+        emiAmount: '',
         tenure: '',
         loanDate: format(new Date(), 'yyyy-MM-dd'),
         dueDay: '',
@@ -199,6 +202,20 @@ export function LoanApplicationForm() {
                 onChange={handleChange}
                 placeholder="Enter amount"
                 required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                EMI Amount (Monthly)
+              </label>
+              <Input
+                name="emiAmount"
+                type="number"
+                step="0.01"
+                value={formData.emiAmount}
+                onChange={handleChange}
+                placeholder="Enter monthly EMI amount"
               />
             </div>
 

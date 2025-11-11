@@ -90,16 +90,16 @@ app.get('/api/loans/range', (req, res) => {
 });
 
 app.post('/api/loans', (req, res) => {
-  const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status } = req.body || {};
+  const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status } = req.body || {};
   if (!vehicleNumber || amount == null || tenure == null || !loanDate || !paymentMode) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   const stmt = db.prepare(`INSERT INTO loanApplications (
-    vehicleNumber, customerId, customerName, customerPhone, dealer, amount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status, createdAt
-  ) VALUES (@vehicleNumber, @customerId, @customerName, @customerPhone, @dealer, @amount, @tenure, @loanDate, @dueDay, @hoa, @paymentMode, @remarks, @status, @createdAt)`);
+    vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status, createdAt
+  ) VALUES (@vehicleNumber, @customerId, @customerName, @customerPhone, @dealer, @amount, @emiAmount, @tenure, @loanDate, @dueDay, @hoa, @paymentMode, @remarks, @status, @createdAt)`);
   const info = stmt.run({
     vehicleNumber, customerId: customerId || null, customerName: customerName || null, customerPhone: customerPhone || null, dealer: dealer ?? '',
-    amount: Number(amount), tenure: Number(tenure), loanDate, dueDay: (dueDay == null ? null : Number(dueDay)),
+    amount: Number(amount), emiAmount: (emiAmount == null ? null : Number(emiAmount)), tenure: Number(tenure), loanDate, dueDay: (dueDay == null ? null : Number(dueDay)),
     hoa: hoa || null, paymentMode, remarks: remarks || null,
     status: status || null, createdAt: nowIso()
   });

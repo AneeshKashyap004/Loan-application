@@ -64,7 +64,9 @@ export function DueReport() {
         .map(l => {
           const veh = String(l.vehicleNumber || '').toUpperCase();
           const autoNumber = (l.customerId != null && autoNumberByCustomerId.get(l.customerId)) || autoNumberByVehicle.get(veh) || '';
-          const emi = l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null;
+          const emi = (l.emiAmount != null && l.emiAmount !== '')
+            ? Number(l.emiAmount)
+            : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
           const dueDate = new Date(`${selectedDate}T00:00:00.000Z`).toISOString();
           return {
             id: `loan-${l.id}-${yyyymm}`,

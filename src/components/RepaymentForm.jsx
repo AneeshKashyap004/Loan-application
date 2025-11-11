@@ -6,6 +6,7 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { repaymentsApi, loansApi, customersApi } from '@/api/client';
 import { CustomerSearch } from './CustomerSearch';
 import { format } from 'date-fns';
+import { formatDateDMY } from '@/utils/date';
 
 export function RepaymentForm() {
   const [formData, setFormData] = useState({
@@ -92,7 +93,11 @@ export function RepaymentForm() {
       setFormData(prev => ({
         ...prev,
         vehicleNumber: loan.vehicleNumber || prev.vehicleNumber,
-        dueAmount: prev.dueAmount || (loan.amount ? String(loan.amount) : ''),
+        dueAmount: prev.dueAmount || (
+          loan.emiAmount != null && loan.emiAmount !== ''
+            ? String(loan.emiAmount)
+            : (loan.amount ? String(loan.amount) : '')
+        ),
       }));
     }
   };
@@ -211,7 +216,7 @@ export function RepaymentForm() {
                 <option value="">-- Choose a loan --</option>
                 {customerLoans.map(l => (
                   <option key={l.id} value={l.id}>
-                    {l.vehicleNumber || 'Vehicle'} • ₹{l.amount} • {l.status || 'N/A'} • {new Date(l.loanDate).toLocaleDateString()}
+                    {l.vehicleNumber || 'Vehicle'} • ₹{l.amount} • {l.status || 'N/A'} • {formatDateDMY(l.loanDate)}
                   </option>
                 ))}
               </select>
@@ -391,7 +396,7 @@ export function RepaymentForm() {
                       <td className="py-2 pr-4">{r.customerName}</td>
                       <td className="py-2 pr-4">{r.vehicleNumber}</td>
                       <td className="py-2 pr-4">₹{Number(r.dueAmount || 0).toLocaleString()}</td>
-                      <td className="py-2 pr-4">{new Date(r.dueDate).toLocaleDateString()}</td>
+                      <td className="py-2 pr-4">{formatDateDMY(r.dueDate)}</td>
                     </tr>
                   );
                 })
