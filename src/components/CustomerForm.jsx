@@ -4,7 +4,7 @@ import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { Alert, AlertDescription, AlertTitle } from './ui/Alert';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
-import { customersApi } from '@/api/client';
+import { customersApi, loansApi } from '@/api/client';
 
 export function CustomerForm() {
   const [formData, setFormData] = useState({
@@ -19,14 +19,57 @@ export function CustomerForm() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState([]);
+  const [loanTotals, setLoanTotals] = useState(new Map());
   const [showForm, setShowForm] = useState(false);
 
   const loadCustomers = async () => {
     try {
-      const rows = await customersApi.list();
+      const [rows, loans] = await Promise.all([
+        customersApi.list(),
+        loansApi.list(),
+      ]);
       setCustomers(rows);
+
+      // Build helper maps
+      const idByAuto = new Map();
+      const vehByAuto = new Map();
+      (rows || []).forEach(c => {
+        if (c.autoNumber) idByAuto.set(String(c.autoNumber), c.id);
+        if (c.autoNumber && c.vehicleNumber) vehByAuto.set(String(c.autoNumber), String(c.vehicleNumber).toUpperCase());
+      });
+
+      // Aggregate totals per autoNumber with fallbacks (autoNumber, numeric id, vehicleNumber)
+      const totals = new Map();
+      (loans || []).forEach(l => {
+        const amount = Number(l.amount) || 0;
+        const veh = String(l.vehicleNumber || '').toUpperCase();
+        let auto = null;
+
+        // Prefer direct autoNumber match
+        if (l.customerId && idByAuto.has(String(l.customerId))) {
+          auto = String(l.customerId);
+        } else {
+          // If customerId is numeric, map back to auto
+          const maybeId = String(l.customerId || '');
+          for (const [a, id] of idByAuto.entries()) {
+            if (String(id) === maybeId) { auto = a; break; }
+          }
+          // Fallback by vehicle number
+          if (!auto) {
+            for (const [a, v] of vehByAuto.entries()) {
+              if (v === veh) { auto = a; break; }
+            }
+          }
+        }
+
+        if (auto) {
+          totals.set(auto, (totals.get(auto) || 0) + amount);
+        }
+      });
+
+      setLoanTotals(totals);
     } catch (e) {
-      console.error('Failed to load customers', e);
+      console.error('Failed to load customers/loans', e);
     }
   };
 
@@ -264,7 +307,7 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.name}</td>
                     <td className="py-2 pr-4">{c.phone}</td>
                     <td className="py-2 pr-4">{c.dealer}</td>
-                    <td className="py-2 pr-4">₹{c.loanAmount}</td>
+                    <td className="py-2 pr-4">₹{Number(loanTotals.get(c.autoNumber) || 0).toLocaleString()}</td>
                     <td className="py-2 pr-4">{c.documentVerified ? 'Yes' : 'No'}</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                   </tr>
