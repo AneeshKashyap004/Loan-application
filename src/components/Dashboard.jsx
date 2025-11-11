@@ -102,12 +102,12 @@ export function Dashboard() {
       title: status ? `${status.charAt(0).toUpperCase() + status.slice(1)} Loans` : 'All Loans',
       data: filteredLoans,
       columns: [
-        { key: 'id', header: 'Loan ID' },
+        { key: 'customerId', header: 'Customer ID' },
         { key: 'customerName', header: 'Customer' },
+        { key: 'vehicleNumber', header: 'Vehicle' },
         { key: 'amount', header: 'Amount', format: (amt) => `₹${Number(amt).toLocaleString()}` },
-        { key: 'interestRate', header: 'Interest %' },
-        { key: 'status', header: 'Status' },
-        { key: 'createdAt', header: 'Date', format: (date) => new Date(date).toLocaleDateString() }
+        { key: 'hoa', header: 'HOA' },
+        { key: 'loanDate', header: 'Due Date', format: (date) => new Date(date).toLocaleDateString() }
       ],
       searchKey: 'customerName'
     });

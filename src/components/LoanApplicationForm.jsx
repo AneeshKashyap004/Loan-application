@@ -26,7 +26,6 @@ export function LoanApplicationForm() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [customerIdInput, setCustomerIdInput] = useState('');
 
   const handleCustomerSelect = (customer) => {
     setSelectedCustomer(customer);
@@ -48,21 +47,7 @@ export function LoanApplicationForm() {
     }));
   };
 
-  const handleCustomerIdFetch = async () => {
-    const id = customerIdInput.trim();
-    if (!id) return;
-    setLoading(true);
-    setMessage({ type: '', text: '' });
-    try {
-      const customer = await customersApi.getById(id);
-      handleCustomerSelect(customer);
-    } catch (err) {
-      console.error('Customer lookup failed', err);
-      setMessage({ type: 'error', text: 'Customer not found for the given ID' });
-    } finally {
-      setLoading(false);
-    }
-  };
+  
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -149,20 +134,6 @@ export function LoanApplicationForm() {
               Search Customer (by ID/Name/Phone) *
             </label>
             <CustomerSearch onSelect={handleCustomerSelect} />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2">
-                <Input
-                  placeholder="Or enter Customer ID (e.g., CUST00001 or EMIKA01AB1234)"
-                  value={customerIdInput}
-                  onChange={(e) => setCustomerIdInput(e.target.value)}
-                />
-              </div>
-              <div>
-                <Button type="button" onClick={handleCustomerIdFetch} disabled={loading} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800">
-                  Fetch by ID
-                </Button>
-              </div>
-            </div>
             {selectedCustomer && (
               <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="text-sm">

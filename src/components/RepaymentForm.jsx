@@ -22,7 +22,6 @@ export function RepaymentForm() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerLoans, setCustomerLoans] = useState([]);
   const [selectedLoanId, setSelectedLoanId] = useState('');
-  const [customerIdInput, setCustomerIdInput] = useState('');
   const [dueToday, setDueToday] = useState([]);
   const [customers, setCustomers] = useState([]);
   
@@ -74,7 +73,8 @@ export function RepaymentForm() {
       contact: customer.phone,
     }));
     try {
-      const loans = await loansApi.listByCustomer(customer.id);
+      const key = customer.autoNumber || customer.id;
+      const loans = await loansApi.listByCustomer(key);
       setCustomerLoans(loans);
     } catch (err) {
       console.error('Failed to load customer loans', err);
@@ -82,21 +82,7 @@ export function RepaymentForm() {
     }
   };
 
-  const handleCustomerIdFetch = async () => {
-    const id = customerIdInput.trim();
-    if (!id) return;
-    setLoading(true);
-    setMessage({ type: '', text: '' });
-    try {
-      const customer = await customersApi.getById(id);
-      await handleCustomerSelect(customer);
-    } catch (err) {
-      console.error('Customer lookup failed', err);
-      setMessage({ type: 'error', text: 'Customer not found for the given ID' });
-    } finally {
-      setLoading(false);
-    }
-  };
+  
 
   const handleLoanSelect = (e) => {
     const loanId = e.target.value;
@@ -201,20 +187,6 @@ export function RepaymentForm() {
               Search Customer (by ID/Name/Phone) *
             </label>
             <CustomerSearch onSelect={handleCustomerSelect} />
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-2">
-                <Input
-                  placeholder="Or enter Customer ID"
-                  value={customerIdInput}
-                  onChange={(e) => setCustomerIdInput(e.target.value)}
-                />
-              </div>
-              <div>
-                <Button type="button" onClick={handleCustomerIdFetch} disabled={loading} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800">
-                  Fetch by ID
-                </Button>
-              </div>
-            </div>
             {selectedCustomer && (
               <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="text-sm">
