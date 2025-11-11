@@ -37,6 +37,7 @@ export function init() {
       amount REAL NOT NULL,
       tenure INTEGER NOT NULL,
       loanDate TEXT NOT NULL,
+      dueDay INTEGER,
       hoa TEXT,
       paymentMode TEXT NOT NULL,
       remarks TEXT,
@@ -79,6 +80,9 @@ export function migrate() {
   }
   if (!hasColumn('loanApplications', 'customerPhone')) {
     db.exec('ALTER TABLE loanApplications ADD COLUMN customerPhone TEXT');
+  }
+  if (!hasColumn('loanApplications', 'dueDay')) {
+    db.exec('ALTER TABLE loanApplications ADD COLUMN dueDay INTEGER');
   }
 
   // repayments

@@ -17,6 +17,7 @@ export function LoanApplicationForm() {
     amount: '',
     tenure: '',
     loanDate: format(new Date(), 'yyyy-MM-dd'),
+    dueDay: '',
     hoa: '',
     paymentMode: 'Cash',
     remarks: '',
@@ -70,8 +71,15 @@ export function LoanApplicationForm() {
 
     try {
       // Validation (dealer is optional)
-      if (!formData.vehicleNumber || !formData.amount || !formData.tenure || !formData.loanDate) {
+      if (!formData.vehicleNumber || !formData.amount || !formData.tenure || !formData.loanDate || !formData.dueDay) {
         setMessage({ type: 'error', text: 'Please fill in all required fields' });
+        setLoading(false);
+        return;
+      }
+
+      const dueDayNum = Number(formData.dueDay);
+      if (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31) {
+        setMessage({ type: 'error', text: 'Please enter a valid EMI Due Day between 1 and 31' });
         setLoading(false);
         return;
       }
@@ -86,6 +94,7 @@ export function LoanApplicationForm() {
         amount: parseFloat(formData.amount),
         tenure: parseInt(formData.tenure),
         loanDate: new Date(formData.loanDate).toISOString(),
+        dueDay: dueDayNum,
         hoa: formData.hoa,
         paymentMode: formData.paymentMode,
         remarks: formData.remarks,
@@ -104,6 +113,7 @@ export function LoanApplicationForm() {
         amount: '',
         tenure: '',
         loanDate: format(new Date(), 'yyyy-MM-dd'),
+        dueDay: '',
         hoa: '',
         paymentMode: 'Cash',
         remarks: '',
@@ -244,6 +254,22 @@ export function LoanApplicationForm() {
                 type="date"
                 value={formData.loanDate}
                 onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                EMI Due Day (1-31) *
+              </label>
+              <Input
+                name="dueDay"
+                type="number"
+                min="1"
+                max="31"
+                value={formData.dueDay}
+                onChange={handleChange}
+                placeholder="e.g., 5"
                 required
               />
             </div>
