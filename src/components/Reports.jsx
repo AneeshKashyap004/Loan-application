@@ -69,7 +69,7 @@ export function Reports() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Customer Report</h1>
-        <p className="text-gray-500 mt-1">Enter Customer ID (EMI/INP + Vehicle No. or CUST ID) to view and download their report</p>
+        <p className="text-gray-500 mt-1">Enter Customer ID </p>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border p-6 space-y-4">
