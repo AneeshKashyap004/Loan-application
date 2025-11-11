@@ -41,19 +41,21 @@ app.get('/api/customers/:id', (req, res) => {
 });
 
 app.post('/api/customers', (req, res) => {
-  const { name, phone, dealer, loanAmount, documentVerified } = req.body || {};
+  const { name, phone, dealer, loanAmount, documentVerified, vehicleNumber, customerType } = req.body || {};
   if (!name || !phone || loanAmount == null) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-  const autoNumber = generateCustomerAutoNumber();
-  const stmt = db.prepare(`INSERT INTO customers (autoNumber, name, phone, dealer, loanAmount, documentVerified, createdAt)
-    VALUES (@autoNumber, @name, @phone, @dealer, @loanAmount, @documentVerified, @createdAt)`);
+  const autoNumber = (req.body && req.body.autoNumber) ? String(req.body.autoNumber) : generateCustomerAutoNumber();
+  const stmt = db.prepare(`INSERT INTO customers (autoNumber, name, phone, dealer, loanAmount, vehicleNumber, customerType, documentVerified, createdAt)
+    VALUES (@autoNumber, @name, @phone, @dealer, @loanAmount, @vehicleNumber, @customerType, @documentVerified, @createdAt)`);
   const info = stmt.run({
     autoNumber,
     name,
     phone,
     dealer: dealer ?? '',
     loanAmount: Number(loanAmount),
+    vehicleNumber: vehicleNumber ?? null,
+    customerType: customerType ?? null,
     documentVerified: documentVerified ? 1 : 0,
     createdAt: nowIso(),
   });

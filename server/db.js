@@ -21,6 +21,8 @@ export function init() {
       phone TEXT NOT NULL,
       dealer TEXT NOT NULL,
       loanAmount REAL NOT NULL,
+      vehicleNumber TEXT,
+      customerType TEXT,
       documentVerified INTEGER DEFAULT 0,
       createdAt TEXT NOT NULL
     );
@@ -85,6 +87,14 @@ export function migrate() {
   }
   if (!hasColumn('repayments', 'loanId')) {
     db.exec('ALTER TABLE repayments ADD COLUMN loanId INTEGER');
+  }
+
+  // customers new fields
+  if (!hasColumn('customers', 'vehicleNumber')) {
+    db.exec('ALTER TABLE customers ADD COLUMN vehicleNumber TEXT');
+  }
+  if (!hasColumn('customers', 'customerType')) {
+    db.exec('ALTER TABLE customers ADD COLUMN customerType TEXT');
   }
 }
 

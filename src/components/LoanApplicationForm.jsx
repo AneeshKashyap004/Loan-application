@@ -35,6 +35,7 @@ export function LoanApplicationForm() {
       customerName: customer.name,
       customerPhone: customer.phone,
       dealer: customer.dealer,
+      vehicleNumber: prev.vehicleNumber || customer.vehicleNumber || '',
     }));
   };
 
@@ -157,6 +158,23 @@ export function LoanApplicationForm() {
                 <div className="text-sm">
                   <div className="font-semibold text-gray-900">Selected: {selectedCustomer.name}</div>
                   <div className="text-gray-600">ID: {selectedCustomer.autoNumber} • Phone: {selectedCustomer.phone}</div>
+                </div>
+              </div>
+            )}
+
+            {selectedCustomer && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer ID</label>
+                  <Input value={selectedCustomer.autoNumber || ''} readOnly className="bg-gray-50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                  <Input value={selectedCustomer.phone || ''} readOnly className="bg-gray-50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Dealer</label>
+                  <Input value={formData.dealer || ''} readOnly className="bg-gray-50" />
                 </div>
               </div>
             )}
