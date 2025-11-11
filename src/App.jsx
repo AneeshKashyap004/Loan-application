@@ -32,8 +32,8 @@ function Sidebar() {
     <div className="w-64 bg-white border-r min-h-screen flex flex-col">
       {/* Logo */}
       <div className="p-6 border-b">
-        <h1 className="text-xl font-bold text-gray-900">LoanFlow</h1>
-        <p className="text-sm text-gray-500">Management System</p>
+        <h1 className="text-xl font-bold text-gray-900">Deepak Bank</h1>
+        <p className="text-sm text-gray-500">Loan Management</p>
       </div>
 
       {/* Navigation */}
