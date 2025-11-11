@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
-import { customersApi, repaymentsApi } from '@/api/client';
+import { customersApi, repaymentsApi, loansApi } from '@/api/client';
 import { format } from 'date-fns';
 
 export function DueReport() {
@@ -34,18 +34,55 @@ export function DueReport() {
     try {
       const start = new Date(`${selectedDate}T00:00:00.000Z`).toISOString();
       const end = new Date(`${selectedDate}T23:59:59.999Z`).toISOString();
-      const [custs, reps] = await Promise.all([
+      const [custs, reps, loans] = await Promise.all([
         customersApi.list(),
         repaymentsApi.listByRange(start, end),
+        loansApi.list(),
       ]);
       setCustomers(custs);
-      // Normalize rows, add autoNumber
+      // Normalize repayments rows, add autoNumber
       const withId = (reps || []).map(r => {
         const veh = String(r.vehicleNumber || '').toUpperCase();
         const autoNumber = (r.customerId != null && autoNumberByCustomerId.get(r.customerId)) || autoNumberByVehicle.get(veh) || '';
-        return { ...r, autoNumber };
+        return { ...r, autoNumber, _source: 'repayment' };
       });
-      setRows(withId);
+
+      // Build a set of loanId for this month already represented by repayments
+      const sel = new Date(selectedDate);
+      const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
+      const paidLoanKeys = new Set(
+        withId
+          .filter(r => r.loanId != null)
+          .map(r => `${r.loanId}:${yyyymm}`)
+      );
+
+      // From loans, add "virtual" dues where dueDay matches the selected day and not yet in paidLoanKeys
+      const day = sel.getUTCDate();
+      const loanDueRows = (loans || [])
+        .filter(l => l.dueDay != null && Number(l.dueDay) === day)
+        .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
+        .map(l => {
+          const veh = String(l.vehicleNumber || '').toUpperCase();
+          const autoNumber = (l.customerId != null && autoNumberByCustomerId.get(l.customerId)) || autoNumberByVehicle.get(veh) || '';
+          const emi = l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null;
+          const dueDate = new Date(`${selectedDate}T00:00:00.000Z`).toISOString();
+          return {
+            id: `loan-${l.id}-${yyyymm}`,
+            loanId: l.id,
+            autoNumber,
+            customerName: l.customerName || '',
+            vehicleNumber: l.vehicleNumber || '',
+            dueDate,
+            dueAmount: emi != null && isFinite(emi) ? Math.round(emi) : null,
+            fine: 0,
+            paidAmount: 0,
+            paymentDate: null,
+            _source: 'loan'
+          };
+        });
+
+      const merged = [...loanDueRows, ...withId];
+      setRows(merged);
     } catch (e) {
       console.error('Failed to load due report', e);
       setMessage({ type: 'error', text: 'Failed to load due report. Please try again.' });
