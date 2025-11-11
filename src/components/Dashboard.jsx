@@ -27,9 +27,8 @@ export function Dashboard() {
     totalCustomers: 0,
     totalLoans: 0,
     reports: 0,
-    pendingLoans: 0,
     dueTodayCount: 0,
-    totalCollected: 0,
+    totalDisbursed: 0,
   });
   
   const [modal, setModal] = useState({
@@ -60,16 +59,8 @@ export function Dashboard() {
         repaymentsApi.dueToday(),
       ]);
       
-      const pendingLoans = loans.filter(l => l.status === 'pending').length;
-      
-      const totalCollected = repayments.reduce((sum, r) => {
-        const due = Number(r.dueAmount) || 0;
-        const fine = Number(r.fine) || 0;
-        const pending = Number(r.pendingAmount) || 0;
-        const paid = Number(r.paidAmount) || 0;
-        const derived = Math.max(0, (due + fine) - pending);
-        return sum + (derived || paid);
-      }, 0);
+      // Total disbursed = sum of loan amounts
+      const totalDisbursed = (loans || []).reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
 
       setAllData({ customers, loans, repayments, dueToday });
       
@@ -77,9 +68,8 @@ export function Dashboard() {
         totalCustomers: customers.length,
         totalLoans: loans.length,
         reports: 0,
-        pendingLoans,
         dueTodayCount: dueToday.length,
-        totalCollected,
+        totalDisbursed,
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -141,19 +131,18 @@ export function Dashboard() {
     });
   };
 
-  const showCollectedDetails = () => {
+  const showTotalDisbursedDetails = () => {
+    // Show loans: Customer details and Loan Date
     setModal({
       isOpen: true,
-      title: 'All Collections',
-      data: allData.repayments,
+      title: 'Total Disbursed - Loans',
+      data: allData.loans,
       columns: [
-        { key: 'id', header: 'Receipt #' },
+        { key: 'customerId', header: 'Customer ID' },
         { key: 'customerName', header: 'Customer' },
-        { key: 'dueDate', header: 'Due Date', format: (date) => new Date(date).toLocaleDateString() },
-        { key: 'dueAmount', header: 'Due', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
-        { key: 'fine', header: 'Fine', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
-        { key: 'paidAmount', header: 'Paid', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
-        { key: 'paymentDate', header: 'Paid On', format: (date) => date ? new Date(date).toLocaleDateString() : 'Pending' }
+        { key: 'vehicleNumber', header: 'Vehicle' },
+        { key: 'amount', header: 'Amount', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
+        { key: 'loanDate', header: 'Loan Date', format: (date) => date ? new Date(date).toLocaleDateString() : '—' },
       ],
       searchKey: 'customerName'
     });
@@ -230,14 +219,6 @@ export function Dashboard() {
           onClick={() => window.location.href = '/reports'}
         />
         <StatCard
-          title="Pending Loans"
-          value={stats.pendingLoans}
-          icon={Clock}
-          iconBgColor="bg-orange-100"
-          iconColor="text-orange-600"
-          onClick={() => showLoanDetails('pending')}
-        />
-        <StatCard
           title="Due Today"
           value={stats.dueTodayCount}
           icon={CalendarDays}
@@ -246,12 +227,12 @@ export function Dashboard() {
           onClick={showDueTodayDetails}
         />
         <StatCard
-          title="Total Collected"
-          value={`₹${stats.totalCollected.toLocaleString()}`}
+          title="Total Disbursed"
+          value={`₹${stats.totalDisbursed.toLocaleString()}`}
           icon={TrendingUp}
           iconBgColor="bg-teal-100"
           iconColor="text-teal-600"
-          onClick={showCollectedDetails}
+          onClick={showTotalDisbursedDetails}
         />
       </div>
 

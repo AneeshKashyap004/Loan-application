@@ -129,6 +129,7 @@ export function Reports() {
                       <th className="px-3 py-2 text-left">Amount</th>
                       <th className="px-3 py-2 text-left">Tenure</th>
                       <th className="px-3 py-2 text-left">Loan Date</th>
+                      <th className="px-3 py-2 text-left">HOA</th>
                       <th className="px-3 py-2 text-left">EMI Due Day</th>
                     </tr>
                   </thead>
@@ -139,6 +140,7 @@ export function Reports() {
                         <td className="px-3 py-2">{l.amount}</td>
                         <td className="px-3 py-2">{l.tenure}</td>
                         <td className="px-3 py-2">{l.loanDate?.slice(0,10)}</td>
+                        <td className="px-3 py-2">{l.hoa || '-'}</td>
                         <td className="px-3 py-2">{l.dueDay ?? '-'}</td>
                       </tr>
                     ))}
