@@ -27,7 +27,7 @@ export function Dashboard() {
   const [stats, setStats] = useState({
     totalCustomers: 0,
     totalLoans: 0,
-    reports: 0,
+    reports: 'Click here',
     dueTodayCount: 0,
     totalDisbursed: 0,
   });
@@ -68,7 +68,7 @@ export function Dashboard() {
       setStats({
         totalCustomers: customers.length,
         totalLoans: loans.length,
-        reports: 0,
+        reports: 'Click here',
         dueTodayCount: dueToday.length,
         totalDisbursed,
       });
