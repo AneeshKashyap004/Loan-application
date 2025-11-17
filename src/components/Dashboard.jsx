@@ -143,7 +143,7 @@ export function Dashboard() {
         { key: 'customerName', header: 'Customer' },
         { key: 'vehicleNumber', header: 'Vehicle' },
         { key: 'amount', header: 'Amount', format: (amt) => `₹${Number(amt || 0).toLocaleString()}` },
-        { key: 'loanDate', header: 'Loan Date', format: (date) => date ? new Date(date).toLocaleDateString() : '—' },
+        { key: 'loanDate', header: 'Loan Date', format: (date) => date ? formatDateDMY(date) : '—' },
       ],
       searchKey: 'customerName'
     });

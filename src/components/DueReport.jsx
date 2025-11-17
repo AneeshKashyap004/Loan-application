@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from './ui/Input';
+import { DateInputDMY } from './ui/DateInputDMY';
 import { Button } from './ui/Button';
 import { customersApi, repaymentsApi, loansApi } from '@/api/client';
 import { format } from 'date-fns';
@@ -154,7 +155,7 @@ export function DueReport() {
       <div className="bg-white rounded-lg shadow-sm border p-4 flex items-end gap-4">
         <div className="flex-1 max-w-xs">
           <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+          <DateInputDMY name="selectedDate" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
         </div>
         <Button onClick={load} className="bg-blue-600 hover:bg-blue-700" disabled={loading}>
           {loading ? 'Loading...' : 'Refresh'}
@@ -187,8 +188,8 @@ export function DueReport() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.vehicleNumber || ''}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₹{Number(r.dueAmount || 0).toLocaleString()}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  <Input
-                    type="date"
+                  <DateInputDMY
+                    name={`due-${r.id}`}
                     value={editing[r.id] ?? format(new Date(r.dueDate), 'yyyy-MM-dd')}
                     onChange={(e) => handleDateChangeInline(r.id, e.target.value)}
                   />

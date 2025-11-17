@@ -48,8 +48,8 @@ export function exportCustomersToCSV(customers, startDate = null, endDate = null
   const csvContent = convertToCSV(filteredData, headers);
   
   const dateRange = startDate && endDate 
-    ? `_${format(new Date(startDate), 'yyyy-MM-dd')}_to_${format(new Date(endDate), 'yyyy-MM-dd')}`
-    : `_${format(new Date(), 'yyyy-MM-dd')}`;
+    ? `_${format(new Date(startDate), 'dd-MM-yyyy')}_to_${format(new Date(endDate), 'dd-MM-yyyy')}`
+    : `_${format(new Date(), 'dd-MM-yyyy')}`;
   
   downloadCSV(csvContent, `customers${dateRange}.csv`);
 }
@@ -69,8 +69,8 @@ export function exportLoanApplicationsToCSV(loanApplications, startDate = null, 
   const csvContent = convertToCSV(filteredData, headers);
   
   const dateRange = startDate && endDate 
-    ? `_${format(new Date(startDate), 'yyyy-MM-dd')}_to_${format(new Date(endDate), 'yyyy-MM-dd')}`
-    : `_${format(new Date(), 'yyyy-MM-dd')}`;
+    ? `_${format(new Date(startDate), 'dd-MM-yyyy')}_to_${format(new Date(endDate), 'dd-MM-yyyy')}`
+    : `_${format(new Date(), 'dd-MM-yyyy')}`;
   
   downloadCSV(csvContent, `loan_applications${dateRange}.csv`);
 }
@@ -90,8 +90,8 @@ export function exportRepaymentsToCSV(repayments, startDate = null, endDate = nu
   const csvContent = convertToCSV(filteredData, headers);
   
   const dateRange = startDate && endDate 
-    ? `_${format(new Date(startDate), 'yyyy-MM-dd')}_to_${format(new Date(endDate), 'yyyy-MM-dd')}`
-    : `_${format(new Date(), 'yyyy-MM-dd')}`;
+    ? `_${format(new Date(startDate), 'dd-MM-yyyy')}_to_${format(new Date(endDate), 'dd-MM-yyyy')}`
+    : `_${format(new Date(), 'dd-MM-yyyy')}`;
   
   downloadCSV(csvContent, `repayments${dateRange}.csv`);
 }

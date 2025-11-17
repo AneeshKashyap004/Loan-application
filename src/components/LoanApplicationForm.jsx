@@ -6,6 +6,8 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { loansApi, customersApi, uploadsApi, toAbsoluteFileUrl } from '@/api/client';
 import { CustomerSearch } from './CustomerSearch';
 import { format } from 'date-fns';
+import { formatDateDMY } from '@/utils/date';
+import { DateInputDMY } from './ui/DateInputDMY';
 
 export function LoanApplicationForm() {
   const [formData, setFormData] = useState({
@@ -168,7 +170,7 @@ export function LoanApplicationForm() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Loan Date *</label>
-              <Input name="loanDate" type="date" value={formData.loanDate} onChange={handleChange} required />
+              <DateInputDMY name="loanDate" value={formData.loanDate} onChange={handleChange} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">EMI Due Day (1-31) *</label>

@@ -7,6 +7,7 @@ import { repaymentsApi, loansApi, customersApi } from '@/api/client';
 import { CustomerSearch } from './CustomerSearch';
 import { format } from 'date-fns';
 import { formatDateDMY } from '@/utils/date';
+import { DateInputDMY } from './ui/DateInputDMY';
 
 export function RepaymentForm() {
   const [formData, setFormData] = useState({
@@ -322,13 +323,7 @@ export function RepaymentForm() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Due Date *
               </label>
-              <Input
-                name="dueDate"
-                type="date"
-                value={formData.dueDate}
-                onChange={handleChange}
-                required
-              />
+              <DateInputDMY name="dueDate" value={formData.dueDate} onChange={handleChange} />
             </div>
 
             <div>
@@ -416,7 +411,7 @@ export function RepaymentForm() {
           <div className="flex items-end gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Dues Date</label>
-              <Input type="date" value={duesDate} onChange={(e) => setDuesDate(e.target.value)} />
+              <DateInputDMY name="duesDate" value={duesDate} onChange={(e) => setDuesDate(e.target.value)} />
             </div>
             <h2 className="text-lg font-semibold text-gray-900 pb-1">Dues</h2>
           </div>
@@ -461,11 +456,13 @@ export function RepaymentForm() {
                       </td>
                       <td className="py-2 pr-4">
                         {promisedEditing[r.id] != null ? (
-                          <Input
-                            type="date"
-                            value={promisedEditing[r.id] ?? format(new Date(r.dueDate), 'yyyy-MM-dd')}
-                            onChange={(e) => setPromisedEditing(prev => ({ ...prev, [r.id]: e.target.value }))}
-                          />
+                          <div>
+                            <DateInputDMY
+                              name={`promised-${r.id}`}
+                              value={promisedEditing[r.id] ?? format(new Date(r.dueDate), 'yyyy-MM-dd')}
+                              onChange={(e) => setPromisedEditing(prev => ({ ...prev, [r.id]: e.target.value }))}
+                            />
+                          </div>
                         ) : (
                           <Button variant="outline" onClick={() => setPromisedEditing(prev => ({ ...prev, [r.id]: format(new Date(r.dueDate), 'yyyy-MM-dd') }))}>Promised Date</Button>
                         )}
