@@ -27,6 +27,10 @@ export function RepaymentForm() {
   const [remainingAmount, setRemainingAmount] = useState(null);
   const [dueToday, setDueToday] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [promisedEditing, setPromisedEditing] = useState({});
+  const [promisedSaving, setPromisedSaving] = useState({});
+  const [duesDate, setDuesDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [remarkDraft, setRemarkDraft] = useState({});
   
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
@@ -55,18 +59,34 @@ export function RepaymentForm() {
   useEffect(() => {
     const loadDueAndCustomers = async () => {
       try {
+        const start = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
+        const end = new Date(`${duesDate}T23:59:59.999Z`).toISOString();
         const [custs, dues] = await Promise.all([
           customersApi.list(),
-          repaymentsApi.dueToday(),
+          repaymentsApi.listByRange(start, end),
         ]);
         setCustomers(custs);
-        setDueToday(dues);
+        // Only unpaid dues
+        setDueToday((dues || []).filter(d => Number(d.isPaid) === 0));
       } catch (e) {
-        console.error('Failed to load due today/customers', e);
+        console.error('Failed to load dues/customers', e);
       }
     };
     loadDueAndCustomers();
-  }, []);
+  }, [duesDate]);
+
+  const reloadDueToday = async () => {
+    try {
+      const start = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
+      const end = new Date(`${duesDate}T23:59:59.999Z`).toISOString();
+      const [custs, dues] = await Promise.all([
+        customersApi.list(),
+        repaymentsApi.listByRange(start, end),
+      ]);
+      setCustomers(custs);
+      setDueToday((dues || []).filter(d => Number(d.isPaid) === 0));
+    } catch (e) { console.error(e); }
+  };
 
   const handleCustomerSelect = async (customer) => {
     setSelectedCustomer(customer);
@@ -393,17 +413,14 @@ export function RepaymentForm() {
       {/* Due Today List */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Today's Dues</h2>
-          <button onClick={async () => {
-            try {
-              const [custs, dues] = await Promise.all([
-                customersApi.list(),
-                repaymentsApi.dueToday(),
-              ]);
-              setCustomers(custs);
-              setDueToday(dues);
-            } catch (e) { console.error(e); }
-          }} className="text-sm text-blue-600 hover:underline">Refresh</button>
+          <div className="flex items-end gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Dues Date</label>
+              <Input type="date" value={duesDate} onChange={(e) => setDuesDate(e.target.value)} />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 pb-1">Dues</h2>
+          </div>
+          <button onClick={reloadDueToday} className="text-sm text-blue-600 hover:underline">Refresh</button>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -414,12 +431,15 @@ export function RepaymentForm() {
                 <th className="py-2 pr-4">Vehicle</th>
                 <th className="py-2 pr-4">Due Amount</th>
                 <th className="py-2 pr-4">Due Date</th>
+                <th className="py-2 pr-4">Remark</th>
+                <th className="py-2 pr-4">Promised Date</th>
+                <th className="py-2 pr-4">Actions</th>
               </tr>
             </thead>
             <tbody>
               {dueToday.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="py-4 text-gray-500">No dues today.</td>
+                  <td colSpan="8" className="py-4 text-gray-500">No dues for selected date.</td>
                 </tr>
               ) : (
                 dueToday.map((r) => {
@@ -432,6 +452,70 @@ export function RepaymentForm() {
                       <td className="py-2 pr-4">{r.vehicleNumber}</td>
                       <td className="py-2 pr-4">₹{Number(r.dueAmount || 0).toLocaleString()}</td>
                       <td className="py-2 pr-4">{formatDateDMY(r.dueDate)}</td>
+                      <td className="py-2 pr-4">
+                        <Input
+                          value={remarkDraft[r.id] ?? (r.remarks || '')}
+                          onChange={(e) => setRemarkDraft(prev => ({ ...prev, [r.id]: e.target.value }))}
+                          placeholder="Add remark"
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        {promisedEditing[r.id] != null ? (
+                          <Input
+                            type="date"
+                            value={promisedEditing[r.id] ?? format(new Date(r.dueDate), 'yyyy-MM-dd')}
+                            onChange={(e) => setPromisedEditing(prev => ({ ...prev, [r.id]: e.target.value }))}
+                          />
+                        ) : (
+                          <Button variant="outline" onClick={() => setPromisedEditing(prev => ({ ...prev, [r.id]: format(new Date(r.dueDate), 'yyyy-MM-dd') }))}>Promised Date</Button>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {promisedEditing[r.id] != null ? (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={async () => {
+                                const newDateStr = promisedEditing[r.id];
+                                if (!newDateStr) return;
+                                setPromisedSaving(prev => ({ ...prev, [r.id]: true }));
+                                try {
+                                  const iso = new Date(`${newDateStr}T00:00:00.000Z`).toISOString();
+                                  const payload = { dueDate: iso };
+                                  const rem = remarkDraft[r.id];
+                                  if (rem != null) payload.remarks = rem;
+                                  await repaymentsApi.update(r.id, payload);
+                                  setPromisedEditing(prev => ({ ...prev, [r.id]: undefined }));
+                                  await reloadDueToday();
+                                } catch (e) {
+                                  console.error('Failed to save promised date', e);
+                                } finally {
+                                  setPromisedSaving(prev => ({ ...prev, [r.id]: false }));
+                                }
+                              }}
+                              disabled={!!promisedSaving[r.id]}
+                              className="bg-blue-600 hover:bg-blue-700"
+                            >
+                              {promisedSaving[r.id] ? 'Saving...' : 'Save'}
+                            </Button>
+                            <Button variant="outline" onClick={() => setPromisedEditing(prev => ({ ...prev, [r.id]: undefined }))}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={async () => {
+                                // Allow saving just the remark without changing date
+                                try {
+                                  const rem = remarkDraft[r.id];
+                                  if (rem == null || rem === r.remarks) return;
+                                  await repaymentsApi.update(r.id, { remarks: rem });
+                                  await reloadDueToday();
+                                } catch (e) { console.error('Failed to save remark', e); }
+                              }}
+                              variant="outline"
+                            >Save Remark</Button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   );
                 })

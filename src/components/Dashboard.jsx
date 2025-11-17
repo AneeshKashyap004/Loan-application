@@ -125,7 +125,7 @@ export function Dashboard() {
         { key: 'id', header: 'Loan ID' },
         { key: 'customerName', header: 'Customer' },
         { key: 'amount', header: 'Amount', format: (amt) => `₹${Number(amt).toLocaleString()}` },
-        { key: 'disbursementDate', header: 'Disbursed On', format: (date) => date ? formatDateDMY(date) : 'N/A' },
+       // { key: 'disbursementDate', header: 'Disbursed On', format: (date) => date ? formatDateDMY(date) : 'N/A' },
         { key: 'repaymentTerm', header: 'Term' }
       ],
       searchKey: 'customerName'

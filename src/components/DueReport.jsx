@@ -34,24 +34,27 @@ export function DueReport() {
     try {
       const start = new Date(`${selectedDate}T00:00:00.000Z`).toISOString();
       const end = new Date(`${selectedDate}T23:59:59.999Z`).toISOString();
-      const [custs, reps, loans] = await Promise.all([
+      const sel = new Date(selectedDate);
+      const monthStart = new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString();
+      const monthEnd = new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString();
+      const [custs, repsForDay, repsForMonth, loans] = await Promise.all([
         customersApi.list(),
         repaymentsApi.listByRange(start, end),
+        repaymentsApi.listByRange(monthStart, monthEnd),
         loansApi.list(),
       ]);
       setCustomers(custs);
       // Normalize repayments rows, add autoNumber
-      const withId = (reps || []).map(r => {
+      const withId = (repsForDay || []).map(r => {
         const veh = String(r.vehicleNumber || '').toUpperCase();
         const autoNumber = (r.customerId != null && autoNumberByCustomerId.get(r.customerId)) || autoNumberByVehicle.get(veh) || '';
         return { ...r, autoNumber, _source: 'repayment' };
       });
 
       // Build a set of loanId for this month already represented by repayments
-      const sel = new Date(selectedDate);
       const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
       const paidLoanKeys = new Set(
-        withId
+        (repsForMonth || [])
           .filter(r => r.loanId != null)
           .map(r => `${r.loanId}:${yyyymm}`)
       );
@@ -126,13 +129,13 @@ export function DueReport() {
           pendingAmount: Number(row.dueAmount || 0),
           remarks: 'Adjusted due date',
         });
+        // Remove the original virtual row from current date view immediately
+        setRows(prev => prev.filter(r => r.id !== row.id));
       } else {
         await repaymentsApi.update(row.id, { dueDate: iso });
       }
       setMessage({ type: 'success', text: 'Due date updated successfully' });
       setEditing(prev => ({ ...prev, [row.id]: undefined }));
-      // Reload current date list
-      await load();
     } catch (e) {
       console.error('Failed to update due date', e);
       setMessage({ type: 'error', text: 'Failed to update due date. Please try again.' });
