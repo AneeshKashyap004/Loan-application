@@ -3,7 +3,7 @@ import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { Alert, AlertDescription, AlertTitle } from './ui/Alert';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
-import { loansApi, customersApi } from '@/api/client';
+import { loansApi, customersApi, uploadsApi } from '@/api/client';
 import { CustomerSearch } from './CustomerSearch';
 import { format } from 'date-fns';
 
@@ -20,9 +20,13 @@ export function LoanApplicationForm() {
     loanDate: format(new Date(), 'yyyy-MM-dd'),
     dueDay: '',
     hoa: '',
+    loanType: 'EMI',
     paymentMode: 'Cash',
     remarks: '',
+    docs: '',
+    alternateContacts: '',
   });
+  const [uploading, setUploading] = useState(false);
   
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
@@ -83,8 +87,11 @@ export function LoanApplicationForm() {
         loanDate: new Date(formData.loanDate).toISOString(),
         dueDay: dueDayNum,
         hoa: formData.hoa,
+        loanType: formData.loanType,
         paymentMode: formData.paymentMode,
         remarks: formData.remarks,
+        docs: formData.docs,
+        alternateContacts: formData.alternateContacts,
       });
 
       setMessage({ type: 'success', text: 'Loan application added successfully!' });
@@ -103,8 +110,11 @@ export function LoanApplicationForm() {
         loanDate: format(new Date(), 'yyyy-MM-dd'),
         dueDay: '',
         hoa: '',
+        loanType: 'EMI',
         paymentMode: 'Cash',
         remarks: '',
+        docs: '',
+        alternateContacts: '',
       });
     } catch (error) {
       console.error('Error saving loan application:', error);
@@ -287,7 +297,7 @@ export function LoanApplicationForm() {
               >
                 <option value="Cash">Cash</option>
                 <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cheque">Cheque</option>
+                <option value="UPI">UPI</option>
               </select>
             </div>
           </div>
@@ -303,6 +313,63 @@ export function LoanApplicationForm() {
               placeholder="Enter any remarks"
               className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Documents URL(s)</label>
+              <Input
+                name="docs"
+                value={formData.docs}
+                onChange={handleChange}
+                placeholder="Paste link(s) to docs (comma-separated)"
+              />
+              <div className="mt-2 space-y-2">
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploading(true);
+                    try {
+                      const reader = new FileReader();
+                      reader.onload = async () => {
+                        try {
+                          const base64 = reader.result;
+                          const resp = await uploadsApi.upload(file.name, base64);
+                          setFormData(prev => ({ ...prev, docs: resp.url }));
+                        } catch (err) {
+                          console.error(err);
+                        } finally {
+                          setUploading(false);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    } catch (err) {
+                      setUploading(false);
+                    }
+                  }}
+                  className="block"
+                />
+                {uploading && <div className="text-sm text-gray-500">Uploading...</div>}
+                {formData.docs && (
+                  <div className="text-sm">
+                    Uploaded: <a href={formData.docs} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Document</a>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Alternate Contacts</label>
+              <textarea
+                name="alternateContacts"
+                value={formData.alternateContacts}
+                onChange={handleChange}
+                placeholder="e.g., John:9876543210, Jane:9876501234"
+                className="flex min-h-[40px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
           </div>
 
           <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">

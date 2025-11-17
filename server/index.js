@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import fs from 'fs';
+import path from 'path';
 import { db, init, migrate, generateCustomerAutoNumber } from './db.js';
 
 const app = express();
@@ -12,6 +14,10 @@ migrate();
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
+// Serve uploaded files
+const uploadsDir = path.resolve(process.cwd(), 'server', 'uploads');
+if (!fs.existsSync(uploadsDir)) { fs.mkdirSync(uploadsDir, { recursive: true }); }
+app.use('/uploads', express.static(uploadsDir));
 
 // Helpers
 function nowIso() { return new Date().toISOString(); }
@@ -90,20 +96,49 @@ app.get('/api/loans/range', (req, res) => {
 });
 
 app.post('/api/loans', (req, res) => {
-  const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status } = req.body || {};
+  const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, loanType, paymentMode, remarks, status, alternateContacts, docs } = req.body || {};
   if (!vehicleNumber || amount == null || tenure == null || !loanDate || !paymentMode) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
+  // Compute loanCode = <loanType || customerType || 'EMI'> + <VEHICLENUMBER>
+  const normalizedVeh = String(vehicleNumber).replace(/\s+/g, '').toUpperCase();
+  let loanCode = `${(loanType || '').toString().toUpperCase() || 'EMI'}${normalizedVeh}`;
+  try {
+    if (!loanType) {
+      const key = String(customerId || '');
+      let cust = null;
+      if (key) {
+        cust = db.prepare('SELECT customerType, vehicleNumber FROM customers WHERE id = ? OR autoNumber = ?').get(key, key);
+      }
+      if (!cust) {
+        cust = db.prepare('SELECT customerType, vehicleNumber FROM customers WHERE UPPER(REPLACE(vehicleNumber, " ", "")) = UPPER(REPLACE(?, " ", ""))').get(normalizedVeh);
+      }
+      const prefix = (cust?.customerType || 'EMI').toUpperCase();
+      loanCode = `${prefix}${normalizedVeh}`;
+    }
+  } catch (e) { /* ignore */ }
   const stmt = db.prepare(`INSERT INTO loanApplications (
-    vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status, createdAt
-  ) VALUES (@vehicleNumber, @customerId, @customerName, @customerPhone, @dealer, @amount, @emiAmount, @tenure, @loanDate, @dueDay, @hoa, @paymentMode, @remarks, @status, @createdAt)`);
+    vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, loanCode, paymentMode, remarks, alternateContacts, status, createdAt
+  ) VALUES (@vehicleNumber, @customerId, @customerName, @customerPhone, @dealer, @amount, @emiAmount, @tenure, @loanDate, @dueDay, @hoa, @loanCode, @paymentMode, @remarks, @alternateContacts, @status, @createdAt)`);
   const info = stmt.run({
     vehicleNumber, customerId: customerId || null, customerName: customerName || null, customerPhone: customerPhone || null, dealer: dealer ?? '',
     amount: Number(amount), emiAmount: (emiAmount == null ? null : Number(emiAmount)), tenure: Number(tenure), loanDate, dueDay: (dueDay == null ? null : Number(dueDay)),
-    hoa: hoa || null, paymentMode, remarks: remarks || null,
+    hoa: hoa || null, loanCode, paymentMode, remarks: remarks || null, alternateContacts: alternateContacts || null,
     status: status || null, createdAt: nowIso()
   });
   const row = db.prepare('SELECT * FROM loanApplications WHERE id = ?').get(info.lastInsertRowid);
+  // Optional: store docs link(s) on customer record if provided
+  if (docs) {
+    try {
+      const payload = { docs: String(docs), key: String(customerId || ''), veh: String(vehicleNumber || '') };
+      const byIdOrAuto = db.prepare('UPDATE customers SET docs = @docs WHERE id = @key OR autoNumber = @key').run(payload);
+      if ((byIdOrAuto?.changes || 0) === 0 && payload.veh) {
+        db.prepare('UPDATE customers SET docs = @docs WHERE UPPER(REPLACE(vehicleNumber, " ", "")) = UPPER(REPLACE(@veh, " ", ""))').run(payload);
+      }
+    } catch (e) {
+      // ignore errors updating docs
+    }
+  }
   res.status(201).json(row);
 });
 
@@ -151,20 +186,32 @@ app.get('/api/repayments/range', (req, res) => {
 });
 
 app.post('/api/repayments', (req, res) => {
-  const { vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine = 0, paidAmount = 0, pendingAmount = 0, remarks } = req.body || {};
+  const { vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine = 0, paidAmount = 0, pendingAmount = 0, remarks, docUrl } = req.body || {};
   if (!vehicleNumber || !customerName || !contact || !dueDate || dueAmount == null) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   const isPaid = Number(pendingAmount) === 0 ? 1 : 0;
   const stmt = db.prepare(`INSERT INTO repayments (
-    vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine, paidAmount, pendingAmount, isPaid, remarks, createdAt
-  ) VALUES (@vehicleNumber, @customerId, @customerName, @contact, @loanId, @dueDate, @dueAmount, @fine, @paidAmount, @pendingAmount, @isPaid, @remarks, @createdAt)`);
+    vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine, paidAmount, pendingAmount, isPaid, docUrl, remarks, createdAt
+  ) VALUES (@vehicleNumber, @customerId, @customerName, @contact, @loanId, @dueDate, @dueAmount, @fine, @paidAmount, @pendingAmount, @isPaid, @docUrl, @remarks, @createdAt)`);
   const info = stmt.run({
     vehicleNumber, customerId: customerId || null, customerName, contact, loanId: loanId || null, dueDate,
     dueAmount: Number(dueAmount), fine: Number(fine), paidAmount: Number(paidAmount),
-    pendingAmount: Number(pendingAmount), isPaid, remarks: remarks || null, createdAt: nowIso()
+    pendingAmount: Number(pendingAmount), isPaid, docUrl: docUrl || null, remarks: remarks || null, createdAt: nowIso()
   });
   const row = db.prepare('SELECT * FROM repayments WHERE id = ?').get(info.lastInsertRowid);
+  // Auto-close loan when total repayments reach/exceed loan amount
+  if (loanId) {
+    try {
+      const totals = db.prepare('SELECT SUM(paidAmount) as totalPaid FROM repayments WHERE loanId = ?').get(loanId);
+      const loan = db.prepare('SELECT amount, status FROM loanApplications WHERE id = ?').get(loanId);
+      if (loan && Number(totals?.totalPaid || 0) >= Number(loan.amount)) {
+        db.prepare('UPDATE loanApplications SET status = ? WHERE id = ?').run('Closed', loanId);
+      }
+    } catch (e) {
+      // ignore close errors
+    }
+  }
   res.status(201).json(row);
 });
 
@@ -190,6 +237,23 @@ app.put('/api/repayments/:id', (req, res) => {
 
 // Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// Simple base64 upload endpoint
+app.post('/api/uploads', (req, res) => {
+  const { filename, data } = req.body || {};
+  if (!filename || !data) return res.status(400).json({ error: 'filename and data (base64) required' });
+  try {
+    const safeName = String(filename).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const base64 = String(data).replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(base64, 'base64');
+    const dest = path.join(uploadsDir, `${Date.now()}_${safeName}`);
+    fs.writeFileSync(dest, buffer);
+    const urlPath = `/uploads/${path.basename(dest)}`;
+    res.json({ url: urlPath });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to save file' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);

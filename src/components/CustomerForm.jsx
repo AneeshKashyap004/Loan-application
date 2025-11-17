@@ -13,7 +13,6 @@ export function CustomerForm() {
     dealer: '',
     documentVerified: false,
     vehicleNumber: '',
-    customerType: 'EMI',
   });
   
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -105,10 +104,11 @@ export function CustomerForm() {
         return;
       }
 
-      // Build Customer ID as EMI/INP + Vehicle Number
-      const prefix = (formData.customerType || 'EMI').toUpperCase();
+      // Build Customer ID = first three letters of name + last four digits of phone
       const normalizedVeh = String(formData.vehicleNumber).replace(/\s+/g, '').toUpperCase();
-      const autoNumber = `${prefix}${normalizedVeh}`;
+      const first3 = String(formData.name || '').replace(/\s+/g, '').toUpperCase().slice(0, 3);
+      const last4 = String(formData.phone || '').replace(/\D/g, '').slice(-4);
+      const autoNumber = `${first3}${last4}`;
 
       // Save to server (SQLite)
       const created = await customersApi.create({
@@ -118,7 +118,6 @@ export function CustomerForm() {
         loanAmount: 0,
         documentVerified: formData.documentVerified,
         vehicleNumber: normalizedVeh,
-        customerType: prefix,
         autoNumber,
       });
 
@@ -132,7 +131,6 @@ export function CustomerForm() {
         dealer: '',
         documentVerified: false,
         vehicleNumber: '',
-        customerType: 'EMI',
       });
       setShowForm(false);
     } catch (error) {
@@ -224,35 +222,7 @@ export function CustomerForm() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Customer Type *
-              </label>
-              <div className="flex items-center gap-6 py-2">
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="customerType"
-                    value="EMI"
-                    checked={formData.customerType === 'EMI'}
-                    onChange={handleChange}
-                    className="h-4 w-4 text-blue-600 border-gray-300"
-                  />
-                  <span>EMI</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="customerType"
-                    value="INP"
-                    checked={formData.customerType === 'INP'}
-                    onChange={handleChange}
-                    className="h-4 w-4 text-blue-600 border-gray-300"
-                  />
-                  <span>INP</span>
-                </label>
-              </div>
-            </div>
+            {/* Customer Type removed as per new ID rules */}
           </div>
 
           <div className="flex items-center space-x-2">
@@ -308,7 +278,13 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.phone}</td>
                     <td className="py-2 pr-4">{c.dealer}</td>
                     <td className="py-2 pr-4">₹{Number(loanTotals.get(c.autoNumber) || 0).toLocaleString()}</td>
-                    <td className="py-2 pr-4">{c.documentVerified ? 'Yes' : 'No'}</td>
+                    <td className="py-2 pr-4">
+                      {c.docs ? (
+                        <a href={c.docs} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                   </tr>
                 ))

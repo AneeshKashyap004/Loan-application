@@ -220,7 +220,7 @@ export function Disbursements() {
               >
                 <option value="Cash">Cash</option>
                 <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cheque">Cheque</option>
+                <option value="UPI">UPI</option>
               </select>
             </div>
           </div>

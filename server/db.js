@@ -23,6 +23,7 @@ export function init() {
       loanAmount REAL NOT NULL,
       vehicleNumber TEXT,
       customerType TEXT,
+      docs TEXT,
       documentVerified INTEGER DEFAULT 0,
       createdAt TEXT NOT NULL
     );
@@ -40,8 +41,10 @@ export function init() {
       loanDate TEXT NOT NULL,
       dueDay INTEGER,
       hoa TEXT,
+      loanCode TEXT,
       paymentMode TEXT NOT NULL,
       remarks TEXT,
+      alternateContacts TEXT,
       status TEXT,
       createdAt TEXT NOT NULL
     );
@@ -59,6 +62,7 @@ export function init() {
       paidAmount REAL DEFAULT 0,
       pendingAmount REAL DEFAULT 0,
       isPaid INTEGER DEFAULT 0,
+      docUrl TEXT,
       remarks TEXT,
       createdAt TEXT NOT NULL
     );
@@ -88,6 +92,12 @@ export function migrate() {
   if (!hasColumn('loanApplications', 'emiAmount')) {
     db.exec('ALTER TABLE loanApplications ADD COLUMN emiAmount REAL');
   }
+  if (!hasColumn('loanApplications', 'loanCode')) {
+    db.exec('ALTER TABLE loanApplications ADD COLUMN loanCode TEXT');
+  }
+  if (!hasColumn('loanApplications', 'alternateContacts')) {
+    db.exec('ALTER TABLE loanApplications ADD COLUMN alternateContacts TEXT');
+  }
 
   // repayments
   if (!hasColumn('repayments', 'customerId')) {
@@ -96,6 +106,9 @@ export function migrate() {
   if (!hasColumn('repayments', 'loanId')) {
     db.exec('ALTER TABLE repayments ADD COLUMN loanId INTEGER');
   }
+  if (!hasColumn('repayments', 'docUrl')) {
+    db.exec('ALTER TABLE repayments ADD COLUMN docUrl TEXT');
+  }
 
   // customers new fields
   if (!hasColumn('customers', 'vehicleNumber')) {
@@ -103,6 +116,9 @@ export function migrate() {
   }
   if (!hasColumn('customers', 'customerType')) {
     db.exec('ALTER TABLE customers ADD COLUMN customerType TEXT');
+  }
+  if (!hasColumn('customers', 'docs')) {
+    db.exec('ALTER TABLE customers ADD COLUMN docs TEXT');
   }
 }
 

@@ -23,6 +23,8 @@ export function RepaymentForm() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerLoans, setCustomerLoans] = useState([]);
   const [selectedLoanId, setSelectedLoanId] = useState('');
+  const [isLoanClosed, setIsLoanClosed] = useState(false);
+  const [remainingAmount, setRemainingAmount] = useState(null);
   const [dueToday, setDueToday] = useState([]);
   const [customers, setCustomers] = useState([]);
   
@@ -85,11 +87,12 @@ export function RepaymentForm() {
 
   
 
-  const handleLoanSelect = (e) => {
+  const handleLoanSelect = async (e) => {
     const loanId = e.target.value;
     setSelectedLoanId(loanId);
     const loan = customerLoans.find(l => String(l.id) === String(loanId));
     if (loan) {
+      setIsLoanClosed(String(loan.status || '').toLowerCase() === 'closed');
       setFormData(prev => ({
         ...prev,
         vehicleNumber: loan.vehicleNumber || prev.vehicleNumber,
@@ -99,6 +102,22 @@ export function RepaymentForm() {
             : (loan.amount ? String(loan.amount) : '')
         ),
       }));
+
+      // Compute remaining amount = loan.amount - sum(paidAmount for this loan)
+      try {
+        if (selectedCustomer && loan.amount != null) {
+          const reps = await repaymentsApi.listByCustomer(selectedCustomer.autoNumber || selectedCustomer.id);
+          const totalPaid = (reps || []).filter(r => String(r.loanId || '') === String(loan.id))
+            .reduce((s, r) => s + (Number(r.paidAmount) || 0), 0);
+          const remaining = Math.max(0, Number(loan.amount) - totalPaid);
+          setRemainingAmount(remaining);
+          if (remaining <= 0) setIsLoanClosed(true);
+        } else {
+          setRemainingAmount(null);
+        }
+      } catch (err) {
+        setRemainingAmount(null);
+      }
     }
   };
 
@@ -108,6 +127,11 @@ export function RepaymentForm() {
     setMessage({ type: '', text: '' });
 
     try {
+      if (isLoanClosed) {
+        setMessage({ type: 'error', text: 'Selected loan is already repaid/closed.' });
+        setLoading(false);
+        return;
+      }
       // Validation
       if (!formData.vehicleNumber || !formData.customerName || !formData.contact || !formData.dueDate || !formData.dueAmount) {
         setMessage({ type: 'error', text: 'Please fill in all required fields' });
@@ -161,6 +185,7 @@ export function RepaymentForm() {
         pendingAmount: '',
         remarks: '',
       });
+      setRemainingAmount(null);
     } catch (error) {
       console.error('Error saving repayment:', error);
       setMessage({ type: 'error', text: 'Failed to save repayment. Please try again.' });
@@ -216,10 +241,18 @@ export function RepaymentForm() {
                 <option value="">-- Choose a loan --</option>
                 {customerLoans.map(l => (
                   <option key={l.id} value={l.id}>
-                    {l.vehicleNumber || 'Vehicle'} • ₹{l.amount} • {l.status || 'N/A'} • {formatDateDMY(l.loanDate)}
+                    {l.loanCode || (l.vehicleNumber || 'Vehicle')} • ₹{l.amount} • {l.status || 'N/A'} • {formatDateDMY(l.loanDate)}
                   </option>
                 ))}
               </select>
+              {isLoanClosed && (
+                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                  Already repaid: This loan is marked as Closed. Further repayments are disabled.
+                </div>
+              )}
+              {remainingAmount != null && !isLoanClosed && (
+                <div className="mt-2 text-sm text-gray-700">Remaining Amount: ₹{Number(remainingAmount).toLocaleString()}</div>
+              )}
             </div>
           )}
 
@@ -349,7 +382,9 @@ export function RepaymentForm() {
             />
           </div>
 
-          <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          {/* Document upload moved to Loans form */}
+
+          <Button type="submit" disabled={loading || isLoanClosed} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60">
             {loading ? 'Processing...' : 'Repay'}
           </Button>
         </form>

@@ -1,4 +1,5 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787/api';
+const API_ORIGIN = BASE_URL.replace(/\/?api\/?$/, '/api').replace(/\/api$/, '');
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -38,4 +39,14 @@ export const repaymentsApi = {
   listByCustomer: (customerId) => request(`/repayments/customer/${customerId}`),
   create: (data) => request('/repayments', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/repayments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+// Uploads
+export const uploadsApi = {
+  upload: async (filename, base64Data) => {
+    const resp = await request('/uploads', { method: 'POST', body: JSON.stringify({ filename, data: base64Data }) });
+    const url = resp?.url || '';
+    const absolute = /^https?:\/\//i.test(url) ? url : `${API_ORIGIN}${url}`;
+    return { url: absolute };
+  },
 };
