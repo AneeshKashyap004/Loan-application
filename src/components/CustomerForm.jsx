@@ -4,7 +4,7 @@ import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { Alert, AlertDescription, AlertTitle } from './ui/Alert';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
-import { customersApi, loansApi } from '@/api/client';
+import { customersApi, loansApi, repaymentsApi, toAbsoluteFileUrl } from '@/api/client';
 
 export function CustomerForm() {
   const [formData, setFormData] = useState({
@@ -14,104 +14,107 @@ export function CustomerForm() {
     documentVerified: false,
     vehicleNumber: '',
   });
-  
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [loanTotals, setLoanTotals] = useState(new Map());
+  const [paidTotals, setPaidTotals] = useState(new Map());
   const [showForm, setShowForm] = useState(false);
 
   const loadCustomers = async () => {
     try {
-      const [rows, loans] = await Promise.all([
+      const [rows, loans, repayments] = await Promise.all([
         customersApi.list(),
         loansApi.list(),
+        repaymentsApi.list(),
       ]);
       setCustomers(rows);
 
       // Build helper maps
-      const idByAuto = new Map();
-      const vehByAuto = new Map();
+      const autoSet = new Set(); // all autoNumbers
+      const autoById = new Map(); // numeric id -> autoNumber
+      const autoByVeh = new Map(); // normalized vehicle -> autoNumber
       (rows || []).forEach(c => {
-        if (c.autoNumber) idByAuto.set(String(c.autoNumber), c.id);
-        if (c.autoNumber && c.vehicleNumber) vehByAuto.set(String(c.autoNumber), String(c.vehicleNumber).toUpperCase());
+        if (c.autoNumber) autoSet.add(String(c.autoNumber));
+        if (c.id != null && c.autoNumber) autoById.set(String(c.id), String(c.autoNumber));
+        if (c.vehicleNumber && c.autoNumber) autoByVeh.set(String(c.vehicleNumber).replace(/\s+/g, '').toUpperCase(), String(c.autoNumber));
       });
 
-      // Aggregate totals per autoNumber with fallbacks (autoNumber, numeric id, vehicleNumber)
+      // Aggregate loan totals per autoNumber with fallbacks (autoNumber, numeric id, vehicleNumber)
       const totals = new Map();
       (loans || []).forEach(l => {
         const amount = Number(l.amount) || 0;
-        const veh = String(l.vehicleNumber || '').toUpperCase();
+        const veh = String(l.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
         let auto = null;
-
-        // Prefer direct autoNumber match
-        if (l.customerId && idByAuto.has(String(l.customerId))) {
+        // direct autoNumber stored in customerId
+        if (l.customerId && autoSet.has(String(l.customerId))) {
           auto = String(l.customerId);
-        } else {
-          // If customerId is numeric, map back to auto
-          const maybeId = String(l.customerId || '');
-          for (const [a, id] of idByAuto.entries()) {
-            if (String(id) === maybeId) { auto = a; break; }
-          }
-          // Fallback by vehicle number
-          if (!auto) {
-            for (const [a, v] of vehByAuto.entries()) {
-              if (v === veh) { auto = a; break; }
-            }
-          }
         }
-
-        if (auto) {
-          totals.set(auto, (totals.get(auto) || 0) + amount);
+        // numeric id
+        if (!auto && l.customerId && autoById.has(String(l.customerId))) {
+          auto = autoById.get(String(l.customerId));
         }
+        // by vehicle mapping
+        if (!auto && veh && autoByVeh.has(veh)) {
+          auto = autoByVeh.get(veh);
+        }
+        if (auto) totals.set(auto, (totals.get(auto) || 0) + amount);
       });
-
       setLoanTotals(totals);
+
+      // Aggregate repayments (paid) per autoNumber
+      const paid = new Map();
+      (repayments || []).forEach(r => {
+        const amt = Number(r.paidAmount) || 0;
+        const veh = String(r.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
+        let auto = null;
+        if (r.customerId && autoSet.has(String(r.customerId))) {
+          auto = String(r.customerId);
+        }
+        if (!auto && r.customerId && autoById.has(String(r.customerId))) {
+          auto = autoById.get(String(r.customerId));
+        }
+        if (!auto && veh && autoByVeh.has(veh)) {
+          auto = autoByVeh.get(veh);
+        }
+        if (auto) paid.set(auto, (paid.get(auto) || 0) + amt);
+      });
+      setPaidTotals(paid);
     } catch (e) {
       console.error('Failed to load customers/loans', e);
     }
   };
 
-  useEffect(() => {
-    loadCustomers();
-  }, []);
+  useEffect(() => { loadCustomers(); }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
-
     try {
-      // Validation (dealer and loan amount are optional)
       if (!formData.name || !formData.phone || !formData.vehicleNumber) {
         setMessage({ type: 'error', text: 'Please fill in all required fields' });
         setLoading(false);
         return;
       }
-
-      // Phone validation
       if (!/^\d{10}$/.test(formData.phone)) {
         setMessage({ type: 'error', text: 'Please enter a valid 10-digit phone number' });
         setLoading(false);
         return;
       }
-
-      // Build Customer ID = first three letters of name + last four digits of phone
+      // Customer ID rule: first 3 letters of name + last 4 digits of phone
+      const namePart = String(formData.name).replace(/\s+/g, '').toUpperCase().slice(0, 3);
+      const phoneDigits = String(formData.phone).replace(/\D/g, '');
+      const phonePart = phoneDigits.slice(-4);
+      const autoNumber = `${namePart}${phonePart}`;
       const normalizedVeh = String(formData.vehicleNumber).replace(/\s+/g, '').toUpperCase();
-      const first3 = String(formData.name || '').replace(/\s+/g, '').toUpperCase().slice(0, 3);
-      const last4 = String(formData.phone || '').replace(/\D/g, '').slice(-4);
-      const autoNumber = `${first3}${last4}`;
 
-      // Save to server (SQLite)
-      const created = await customersApi.create({
+      await customersApi.create({
         name: formData.name,
         phone: formData.phone,
         dealer: formData.dealer,
@@ -121,17 +124,9 @@ export function CustomerForm() {
         autoNumber,
       });
 
-      setMessage({ type: 'success', text: `Customer added successfully! Auto Number: ${created.autoNumber}` });
+      setMessage({ type: 'success', text: `Customer added successfully! Auto Number: ${autoNumber}` });
       await loadCustomers();
-      
-      // Reset form
-      setFormData({
-        name: '',
-        phone: '',
-        dealer: '',
-        documentVerified: false,
-        vehicleNumber: '',
-      });
+      setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' });
       setShowForm(false);
     } catch (error) {
       console.error('Error saving customer:', error);
@@ -158,95 +153,45 @@ export function CustomerForm() {
       </div>
 
       {showForm && (
-      <div className="bg-white rounded-lg shadow-sm border p-6 max-w-3xl">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {message.text && (
-            <Alert variant={message.type === 'success' ? 'success' : 'destructive'}>
-              {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-              <AlertTitle>{message.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
-              <AlertDescription>{message.text}</AlertDescription>
-            </Alert>
-          )}
+        <div className="bg-white rounded-lg shadow-sm border p-6 max-w-3xl">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {message.text && (
+              <Alert variant={message.type === 'success' ? 'success' : 'destructive'}>
+                {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                <AlertTitle>{message.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
+                <AlertDescription>{message.text}</AlertDescription>
+              </Alert>
+            )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Customer Name *
-              </label>
-              <Input
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="Enter customer name"
-                required
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
+                <Input name="name" value={formData.name} onChange={handleChange} placeholder="Enter customer name" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+                <Input name="phone" type="tel" value={formData.phone} onChange={handleChange} placeholder="10-digit phone number" maxLength="10" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Dealer Name *</label>
+                <Input name="dealer" value={formData.dealer} onChange={handleChange} placeholder="Enter dealer name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Number *</label>
+                <Input name="vehicleNumber" value={formData.vehicleNumber} onChange={handleChange} placeholder="e.g., KA01AB1234" required />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number *
-              </label>
-              <Input
-                name="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="10-digit phone number"
-                maxLength="10"
-                required
-              />
+            <div className="flex items-center space-x-2">
+              <input id="documentVerified" name="documentVerified" type="checkbox" checked={formData.documentVerified} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500" />
+              <label htmlFor="documentVerified" className="text-sm font-medium text-gray-700 cursor-pointer">Documents Verified</label>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Dealer Name *
-              </label>
-              <Input
-                name="dealer"
-                value={formData.dealer}
-                onChange={handleChange}
-                placeholder="Enter dealer name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Vehicle Number *
-              </label>
-              <Input
-                name="vehicleNumber"
-                value={formData.vehicleNumber}
-                onChange={handleChange}
-                placeholder="e.g., KA01AB1234"
-                required
-              />
-            </div>
-
-            {/* Customer Type removed as per new ID rules */}
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              id="documentVerified"
-              name="documentVerified"
-              type="checkbox"
-              checked={formData.documentVerified}
-              onChange={handleChange}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-            />
-            <label htmlFor="documentVerified" className="text-sm font-medium text-gray-700 cursor-pointer">
-              Documents Verified
-            </label>
-          </div>
-
-          <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
-            {loading ? 'Saving...' : 'Add Customer'}
-          </Button>
-        </form>
-      </div>
+            <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">{loading ? 'Saving...' : 'Add Customer'}</Button>
+          </form>
+        </div>
       )}
 
-      {/* Existing Customers */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Existing Customers</h2>
@@ -260,16 +205,14 @@ export function CustomerForm() {
                 <th className="py-2 pr-4">Name</th>
                 <th className="py-2 pr-4">Phone</th>
                 <th className="py-2 pr-4">Dealer</th>
-                <th className="py-2 pr-4">Loan Amount</th>
+                <th className="py-2 pr-4">Balance</th>
                 <th className="py-2 pr-4">Docs</th>
                 <th className="py-2 pr-4">Created</th>
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="py-4 text-gray-500">No customers found.</td>
-                </tr>
+                <tr><td colSpan="7" className="py-4 text-gray-500">No customers found.</td></tr>
               ) : (
                 customers.map(c => (
                   <tr key={c.id} className="border-t">
@@ -277,14 +220,8 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.name}</td>
                     <td className="py-2 pr-4">{c.phone}</td>
                     <td className="py-2 pr-4">{c.dealer}</td>
-                    <td className="py-2 pr-4">₹{Number(loanTotals.get(c.autoNumber) || 0).toLocaleString()}</td>
-                    <td className="py-2 pr-4">
-                      {c.docs ? (
-                        <a href={c.docs} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
+                    <td className="py-2 pr-4">₹{Math.max(0, Number(loanTotals.get(c.autoNumber) || 0) - Number(paidTotals.get(c.autoNumber) || 0)).toLocaleString()}</td>
+                    <td className="py-2 pr-4">{c.docs ? (<a href={toAbsoluteFileUrl(c.docs)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>) : '—'}</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                   </tr>
                 ))
@@ -296,3 +233,4 @@ export function CustomerForm() {
     </div>
   );
 }
+

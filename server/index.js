@@ -3,7 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import fs from 'fs';
 import path from 'path';
-import { db, init, migrate, generateCustomerAutoNumber } from './db.js';
+import { db, init, migrate } from './db.js';
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -14,6 +14,7 @@ migrate();
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
+
 // Serve uploaded files
 const uploadsDir = path.resolve(process.cwd(), 'server', 'uploads');
 if (!fs.existsSync(uploadsDir)) { fs.mkdirSync(uploadsDir, { recursive: true }); }
@@ -47,11 +48,11 @@ app.get('/api/customers/:id', (req, res) => {
 });
 
 app.post('/api/customers', (req, res) => {
-  const { name, phone, dealer, loanAmount, documentVerified, vehicleNumber, customerType } = req.body || {};
+  const { name, phone, dealer, loanAmount, documentVerified, vehicleNumber } = req.body || {};
   if (!name || !phone || loanAmount == null) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-  const autoNumber = (req.body && req.body.autoNumber) ? String(req.body.autoNumber) : generateCustomerAutoNumber();
+  const autoNumber = (req.body && req.body.autoNumber) ? String(req.body.autoNumber) : null;
   const stmt = db.prepare(`INSERT INTO customers (autoNumber, name, phone, dealer, loanAmount, vehicleNumber, customerType, documentVerified, createdAt)
     VALUES (@autoNumber, @name, @phone, @dealer, @loanAmount, @vehicleNumber, @customerType, @documentVerified, @createdAt)`);
   const info = stmt.run({
@@ -61,7 +62,7 @@ app.post('/api/customers', (req, res) => {
     dealer: dealer ?? '',
     loanAmount: Number(loanAmount),
     vehicleNumber: vehicleNumber ?? null,
-    customerType: customerType ?? null,
+    customerType: null,
     documentVerified: documentVerified ? 1 : 0,
     createdAt: nowIso(),
   });
@@ -69,7 +70,7 @@ app.post('/api/customers', (req, res) => {
   res.status(201).json(row);
 });
 
-// Loans (Disbursements included)
+// Loans
 app.get('/api/loans', (req, res) => {
   const rows = db.prepare('SELECT * FROM loanApplications ORDER BY id DESC').all();
   res.json(rows);
@@ -96,27 +97,13 @@ app.get('/api/loans/range', (req, res) => {
 });
 
 app.post('/api/loans', (req, res) => {
-  const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, loanType, paymentMode, remarks, status, alternateContacts, docs } = req.body || {};
+  const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status, alternateContacts, docs, loanType } = req.body || {};
   if (!vehicleNumber || amount == null || tenure == null || !loanDate || !paymentMode) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-  // Compute loanCode = <loanType || customerType || 'EMI'> + <VEHICLENUMBER>
   const normalizedVeh = String(vehicleNumber).replace(/\s+/g, '').toUpperCase();
-  let loanCode = `${(loanType || '').toString().toUpperCase() || 'EMI'}${normalizedVeh}`;
-  try {
-    if (!loanType) {
-      const key = String(customerId || '');
-      let cust = null;
-      if (key) {
-        cust = db.prepare('SELECT customerType, vehicleNumber FROM customers WHERE id = ? OR autoNumber = ?').get(key, key);
-      }
-      if (!cust) {
-        cust = db.prepare('SELECT customerType, vehicleNumber FROM customers WHERE UPPER(REPLACE(vehicleNumber, " ", "")) = UPPER(REPLACE(?, " ", ""))').get(normalizedVeh);
-      }
-      const prefix = (cust?.customerType || 'EMI').toUpperCase();
-      loanCode = `${prefix}${normalizedVeh}`;
-    }
-  } catch (e) { /* ignore */ }
+  const prefix = String(loanType || 'EMI').toUpperCase() === 'INT' ? 'INT' : 'EMI';
+  const loanCode = `${prefix}${normalizedVeh}`;
   const stmt = db.prepare(`INSERT INTO loanApplications (
     vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, loanCode, paymentMode, remarks, alternateContacts, status, createdAt
   ) VALUES (@vehicleNumber, @customerId, @customerName, @customerPhone, @dealer, @amount, @emiAmount, @tenure, @loanDate, @dueDay, @hoa, @loanCode, @paymentMode, @remarks, @alternateContacts, @status, @createdAt)`);
@@ -127,7 +114,7 @@ app.post('/api/loans', (req, res) => {
     status: status || null, createdAt: nowIso()
   });
   const row = db.prepare('SELECT * FROM loanApplications WHERE id = ?').get(info.lastInsertRowid);
-  // Optional: store docs link(s) on customer record if provided
+  // Update customers.docs if docs provided
   if (docs) {
     try {
       const payload = { docs: String(docs), key: String(customerId || ''), veh: String(vehicleNumber || '') };
@@ -135,9 +122,7 @@ app.post('/api/loans', (req, res) => {
       if ((byIdOrAuto?.changes || 0) === 0 && payload.veh) {
         db.prepare('UPDATE customers SET docs = @docs WHERE UPPER(REPLACE(vehicleNumber, " ", "")) = UPPER(REPLACE(@veh, " ", ""))').run(payload);
       }
-    } catch (e) {
-      // ignore errors updating docs
-    }
+    } catch {}
   }
   res.status(201).json(row);
 });
@@ -208,14 +193,12 @@ app.post('/api/repayments', (req, res) => {
       if (loan && Number(totals?.totalPaid || 0) >= Number(loan.amount)) {
         db.prepare('UPDATE loanApplications SET status = ? WHERE id = ?').run('Closed', loanId);
       }
-    } catch (e) {
-      // ignore close errors
-    }
+    } catch {}
   }
   res.status(201).json(row);
 });
 
-// Update repayment (e.g., change due date)
+// Update repayment
 app.put('/api/repayments/:id', (req, res) => {
   const id = Number(req.params.id);
   const allowed = ['vehicleNumber','customerId','customerName','contact','loanId','dueDate','dueAmount','fine','paidAmount','pendingAmount','isPaid','remarks'];
@@ -223,7 +206,6 @@ app.put('/api/repayments/:id', (req, res) => {
   const keys = Object.keys(payload).filter(k => allowed.includes(k));
   if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
   const sets = keys.map(k => `${k} = @${k}`).join(', ');
-  // If pendingAmount provided, recompute isPaid unless explicitly provided
   if (payload.pendingAmount != null && payload.isPaid == null) {
     payload.isPaid = Number(payload.pendingAmount) === 0 ? 1 : 0;
     keys.push('isPaid');
@@ -238,7 +220,7 @@ app.put('/api/repayments/:id', (req, res) => {
 // Health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Simple base64 upload endpoint
+// Base64 upload endpoint
 app.post('/api/uploads', (req, res) => {
   const { filename, data } = req.body || {};
   if (!filename || !data) return res.status(400).json({ error: 'filename and data (base64) required' });

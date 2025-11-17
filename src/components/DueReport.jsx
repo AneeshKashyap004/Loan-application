@@ -71,8 +71,10 @@ export function DueReport() {
           return {
             id: `loan-${l.id}-${yyyymm}`,
             loanId: l.id,
+            customerId: l.customerId ?? null,
             autoNumber,
             customerName: l.customerName || '',
+            customerPhone: l.customerPhone || '',
             vehicleNumber: l.vehicleNumber || '',
             dueDate,
             dueAmount: emi != null && isFinite(emi) ? Math.round(emi) : null,
@@ -108,8 +110,25 @@ export function DueReport() {
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
-      const iso = new Date(newDateStr).toISOString();
-      await repaymentsApi.update(row.id, { dueDate: iso });
+      const iso = new Date(`${newDateStr}T00:00:00.000Z`).toISOString();
+      if (row._source === 'loan') {
+        // Create a repayment entry on the new date for this loan's EMI
+        await repaymentsApi.create({
+          vehicleNumber: row.vehicleNumber,
+          customerId: row.customerId ?? row.autoNumber ?? null,
+          customerName: row.customerName || '',
+          contact: row.customerPhone || '',
+          loanId: row.loanId,
+          dueDate: iso,
+          dueAmount: Number(row.dueAmount || 0),
+          fine: 0,
+          paidAmount: 0,
+          pendingAmount: Number(row.dueAmount || 0),
+          remarks: 'Adjusted due date',
+        });
+      } else {
+        await repaymentsApi.update(row.id, { dueDate: iso });
+      }
       setMessage({ type: 'success', text: 'Due date updated successfully' });
       setEditing(prev => ({ ...prev, [row.id]: undefined }));
       // Reload current date list

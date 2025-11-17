@@ -1,5 +1,16 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787/api';
-const API_ORIGIN = BASE_URL.replace(/\/?api\/?$/, '/api').replace(/\/api$/, '');
+
+export function toAbsoluteFileUrl(urlPath) {
+  if (!urlPath) return '';
+  try {
+    if (/^https?:\/\//i.test(urlPath)) return urlPath;
+    const origin = (new URL(BASE_URL, window.location.origin)).origin;
+    if (String(urlPath).startsWith('/')) return `${origin}${urlPath}`;
+    return `${origin}/${urlPath.replace(/^\/?/, '')}`;
+  } catch {
+    return urlPath;
+  }
+}
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -43,10 +54,6 @@ export const repaymentsApi = {
 
 // Uploads
 export const uploadsApi = {
-  upload: async (filename, base64Data) => {
-    const resp = await request('/uploads', { method: 'POST', body: JSON.stringify({ filename, data: base64Data }) });
-    const url = resp?.url || '';
-    const absolute = /^https?:\/\//i.test(url) ? url : `${API_ORIGIN}${url}`;
-    return { url: absolute };
-  },
+  upload: (filename, base64Data) => request('/uploads', { method: 'POST', body: JSON.stringify({ filename, data: base64Data }) }),
 };
+
