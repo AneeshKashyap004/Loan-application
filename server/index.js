@@ -3,14 +3,18 @@ import cors from 'cors';
 import morgan from 'morgan';
 import fs from 'fs';
 import path from 'path';
-import { db, init, migrate } from './db.js';
 import { putBase64Object, getSignedUrl } from './aws/s3.js';
+import {
+  listCollection,
+  getItem,
+  putItem,
+  updateItem,
+  nextId,
+  generateCustomerAutoNumber,
+} from './data/store.js';
 
 const app = express();
 const PORT = process.env.PORT || 8787;
-
-init();
-migrate();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -25,38 +29,43 @@ app.use('/uploads', express.static(uploadsDir));
 function nowIso() { return new Date().toISOString(); }
 
 // Customers
-app.get('/api/customers', (req, res) => {
-  const rows = db.prepare('SELECT * FROM customers ORDER BY id DESC').all();
+app.get('/api/customers', async (req, res) => {
+  const rows = await listCollection('customers');
+  rows.sort((a,b) => Number(b.id) - Number(a.id));
   res.json(rows);
 });
 
-app.get('/api/customers/search', (req, res) => {
+app.get('/api/customers/search', async (req, res) => {
   const { q } = req.query;
   if (!q) return res.json([]);
-  const query = `%${q}%`;
-  const rows = db.prepare(`
-    SELECT * FROM customers 
-    WHERE autoNumber LIKE ? OR name LIKE ? OR phone LIKE ?
-    ORDER BY id DESC LIMIT 10
-  `).all(query, query, query);
-  res.json(rows);
+  const query = String(q).toLowerCase();
+  const rows = await listCollection('customers');
+  const out = rows.filter(c =>
+    String(c.autoNumber||'').toLowerCase().includes(query) ||
+    String(c.name||'').toLowerCase().includes(query) ||
+    String(c.phone||'').toLowerCase().includes(query)
+  ).sort((a,b)=>Number(b.id)-Number(a.id)).slice(0,10);
+  res.json(out);
 });
 
-app.get('/api/customers/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM customers WHERE id = ? OR autoNumber = ?').get(req.params.id, req.params.id);
+app.get('/api/customers/:id', async (req, res) => {
+  const id = String(req.params.id);
+  let row = await getItem('customers', id);
+  if (!row) {
+    const all = await listCollection('customers');
+    row = all.find(c => String(c.autoNumber) === id);
+  }
   if (!row) return res.status(404).json({ error: 'Customer not found' });
   res.json(row);
 });
 
-app.post('/api/customers', (req, res) => {
+app.post('/api/customers', async (req, res) => {
   const { name, phone, dealer, loanAmount, documentVerified, vehicleNumber } = req.body || {};
-  if (!name || !phone) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-  const autoNumber = (req.body && req.body.autoNumber) ? String(req.body.autoNumber) : null;
-  const stmt = db.prepare(`INSERT INTO customers (autoNumber, name, phone, dealer, loanAmount, vehicleNumber, customerType, documentVerified, createdAt)
-    VALUES (@autoNumber, @name, @phone, @dealer, @loanAmount, @vehicleNumber, @customerType, @documentVerified, @createdAt)`);
-  const info = stmt.run({
+  if (!name || !phone) return res.status(400).json({ error: 'Missing required fields' });
+  const id = String(await nextId('customers'));
+  const autoNumber = req.body?.autoNumber ? String(req.body.autoNumber) : await generateCustomerAutoNumber();
+  const row = {
+    id: Number(id),
     autoNumber,
     name,
     phone,
@@ -66,38 +75,41 @@ app.post('/api/customers', (req, res) => {
     customerType: null,
     documentVerified: documentVerified ? 1 : 0,
     createdAt: nowIso(),
-  });
-  const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(info.lastInsertRowid);
+  };
+  await putItem('customers', id, row);
   res.status(201).json(row);
 });
 
 // Loans
-app.get('/api/loans', (req, res) => {
-  const rows = db.prepare('SELECT * FROM loanApplications ORDER BY id DESC').all();
+app.get('/api/loans', async (req, res) => {
+  const rows = await listCollection('loanApplications');
+  rows.sort((a,b) => Number(b.id) - Number(a.id));
   res.json(rows);
 });
 
-app.get('/api/loans/customer/:customerId', (req, res) => {
-  const key = req.params.customerId;
-  const cust = db.prepare('SELECT * FROM customers WHERE id = ? OR autoNumber = ?').get(key, key);
-  if (!cust) {
-    const rows = db.prepare('SELECT * FROM loanApplications WHERE customerId = ? ORDER BY id DESC').all(key);
-    return res.json(rows);
-  }
-  const rows = db.prepare(
-    'SELECT * FROM loanApplications WHERE customerId IN (?, ?) OR vehicleNumber = ? ORDER BY id DESC'
-  ).all(cust.autoNumber, String(cust.id), cust.vehicleNumber || '');
+app.get('/api/loans/customer/:customerId', async (req, res) => {
+  const key = String(req.params.customerId);
+  const customers = await listCollection('customers');
+  const cust = customers.find(c => String(c.id) === key || String(c.autoNumber) === key);
+  const loans = await listCollection('loanApplications');
+  let rows;
+  if (!cust) rows = loans.filter(l => String(l.customerId) === key);
+  else rows = loans.filter(l => [String(cust.autoNumber), String(cust.id)].includes(String(l.customerId)) || (cust.vehicleNumber && String(l.vehicleNumber) === String(cust.vehicleNumber)));
+  rows.sort((a,b)=>Number(b.id)-Number(a.id));
   res.json(rows);
 });
 
-app.get('/api/loans/range', (req, res) => {
+app.get('/api/loans/range', async (req, res) => {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ error: 'start and end query params required' });
-  const rows = db.prepare('SELECT * FROM loanApplications WHERE loanDate BETWEEN ? AND ? ORDER BY loanDate DESC').all(start, end);
-  res.json(rows);
+  const rows = await listCollection('loanApplications');
+  const s = new Date(start).toISOString();
+  const e = new Date(end).toISOString();
+  const out = rows.filter(r => r.loanDate >= s && r.loanDate <= e).sort((a,b)=>String(b.loanDate).localeCompare(String(a.loanDate)));
+  res.json(out);
 });
 
-app.post('/api/loans', (req, res) => {
+app.post('/api/loans', async (req, res) => {
   const { vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, paymentMode, remarks, status, alternateContacts, docs, loanType } = req.body || {};
   if (!vehicleNumber || amount == null || tenure == null || !loanDate || !paymentMode) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -105,23 +117,21 @@ app.post('/api/loans', (req, res) => {
   const normalizedVeh = String(vehicleNumber).replace(/\s+/g, '').toUpperCase();
   const prefix = String(loanType || 'EMI').toUpperCase() === 'INT' ? 'INT' : 'EMI';
   const loanCode = `${prefix}${normalizedVeh}`;
-  const stmt = db.prepare(`INSERT INTO loanApplications (
-    vehicleNumber, customerId, customerName, customerPhone, dealer, amount, emiAmount, tenure, loanDate, dueDay, hoa, loanCode, paymentMode, remarks, alternateContacts, status, createdAt
-  ) VALUES (@vehicleNumber, @customerId, @customerName, @customerPhone, @dealer, @amount, @emiAmount, @tenure, @loanDate, @dueDay, @hoa, @loanCode, @paymentMode, @remarks, @alternateContacts, @status, @createdAt)`);
-  const info = stmt.run({
-    vehicleNumber, customerId: customerId || null, customerName: customerName || null, customerPhone: customerPhone || null, dealer: dealer ?? '',
-    amount: Number(amount), emiAmount: (emiAmount == null ? null : Number(emiAmount)), tenure: Number(tenure), loanDate, dueDay: (dueDay == null ? null : Number(dueDay)),
-    hoa: hoa || null, loanCode, paymentMode, remarks: remarks || null, alternateContacts: alternateContacts || null,
+  const id = String(await nextId('loanApplications'));
+  const row = {
+    id: Number(id), vehicleNumber, customerId: customerId || null, customerName: customerName || null, customerPhone: customerPhone || null,
+    dealer: dealer ?? '', amount: Number(amount), emiAmount: (emiAmount == null ? null : Number(emiAmount)), tenure: Number(tenure), loanDate,
+    dueDay: (dueDay == null ? null : Number(dueDay)), hoa: hoa || null, loanCode, paymentMode, remarks: remarks || null, alternateContacts: alternateContacts || null,
     status: status || null, createdAt: nowIso()
-  });
-  const row = db.prepare('SELECT * FROM loanApplications WHERE id = ?').get(info.lastInsertRowid);
+  };
+  await putItem('loanApplications', id, row);
   // Update customers.docs if docs provided
   if (docs) {
     try {
-      const payload = { docs: String(docs), key: String(customerId || ''), veh: String(vehicleNumber || '') };
-      const byIdOrAuto = db.prepare('UPDATE customers SET docs = @docs WHERE id = @key OR autoNumber = @key').run(payload);
-      if ((byIdOrAuto?.changes || 0) === 0 && payload.veh) {
-        db.prepare('UPDATE customers SET docs = @docs WHERE UPPER(REPLACE(vehicleNumber, " ", "")) = UPPER(REPLACE(@veh, " ", ""))').run(payload);
+      const customers = await listCollection('customers');
+      const cust = customers.find(c => String(c.id) === String(customerId) || String(c.autoNumber) === String(customerId) || (c.vehicleNumber && String(c.vehicleNumber).replace(/\s+/g,'').toUpperCase() === normalizedVeh));
+      if (cust) {
+        await updateItem('customers', String(cust.id), { docs: String(docs) });
       }
     } catch {}
   }
@@ -129,70 +139,74 @@ app.post('/api/loans', (req, res) => {
 });
 
 // Repayments
-app.get('/api/repayments', (req, res) => {
-  const rows = db.prepare('SELECT * FROM repayments ORDER BY id DESC').all();
+app.get('/api/repayments', async (req, res) => {
+  const rows = await listCollection('repayments');
+  rows.sort((a,b)=>Number(b.id)-Number(a.id));
   res.json(rows);
 });
 
-app.get('/api/repayments/customer/:customerId', (req, res) => {
-  const key = req.params.customerId;
-  const cust = db.prepare('SELECT * FROM customers WHERE id = ? OR autoNumber = ?').get(key, key);
-  if (!cust) {
-    const rows = db.prepare('SELECT * FROM repayments WHERE customerId = ? ORDER BY id DESC').all(key);
-    return res.json(rows);
-  }
-  const rows = db.prepare(
-    'SELECT * FROM repayments WHERE customerId IN (?, ?) OR vehicleNumber = ? ORDER BY id DESC'
-  ).all(cust.autoNumber, String(cust.id), cust.vehicleNumber || '');
+app.get('/api/repayments/customer/:customerId', async (req, res) => {
+  const key = String(req.params.customerId);
+  const customers = await listCollection('customers');
+  const cust = customers.find(c => String(c.id) === key || String(c.autoNumber) === key);
+  const reps = await listCollection('repayments');
+  let rows;
+  if (!cust) rows = reps.filter(r => String(r.customerId) === key);
+  else rows = reps.filter(r => [String(cust.autoNumber), String(cust.id)].includes(String(r.customerId)) || (cust.vehicleNumber && String(r.vehicleNumber) === String(cust.vehicleNumber)));
+  rows.sort((a,b)=>Number(b.id)-Number(a.id));
   res.json(rows);
 });
 
-app.get('/api/repayments/due-today', (req, res) => {
+app.get('/api/repayments/due-today', async (req, res) => {
   const today = new Date();
   today.setHours(0,0,0,0);
   const start = today.toISOString();
   const end = new Date(today.getTime() + 24*60*60*1000).toISOString();
-  const rows = db.prepare('SELECT * FROM repayments WHERE dueDate >= ? AND dueDate < ? AND isPaid = 0 ORDER BY dueDate ASC').all(start, end);
-  res.json(rows);
+  const rows = await listCollection('repayments');
+  const out = rows.filter(r => r.dueDate >= start && r.dueDate < end && Number(r.isPaid) === 0).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  res.json(out);
 });
 
-app.get('/api/repayments/overdue', (req, res) => {
+app.get('/api/repayments/overdue', async (req, res) => {
   const today = new Date();
   today.setHours(0,0,0,0);
   const start = today.toISOString();
-  const rows = db.prepare('SELECT * FROM repayments WHERE dueDate < ? AND isPaid = 0 ORDER BY dueDate ASC').all(start);
-  res.json(rows);
+  const rows = await listCollection('repayments');
+  const out = rows.filter(r => r.dueDate < start && Number(r.isPaid) === 0).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  res.json(out);
 });
 
-app.get('/api/repayments/range', (req, res) => {
+app.get('/api/repayments/range', async (req, res) => {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ error: 'start and end query params required' });
-  const rows = db.prepare('SELECT * FROM repayments WHERE dueDate BETWEEN ? AND ? ORDER BY dueDate DESC').all(start, end);
-  res.json(rows);
+  const rows = await listCollection('repayments');
+  const s = new Date(start).toISOString();
+  const e = new Date(end).toISOString();
+  const out = rows.filter(r => r.dueDate >= s && r.dueDate <= e).sort((a,b)=>String(b.dueDate).localeCompare(String(a.dueDate)));
+  res.json(out);
 });
 
-app.post('/api/repayments', (req, res) => {
+app.post('/api/repayments', async (req, res) => {
   const { vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine = 0, paidAmount = 0, pendingAmount = 0, remarks, docUrl } = req.body || {};
   if (!vehicleNumber || !customerName || !contact || !dueDate || dueAmount == null) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   const isPaid = Number(pendingAmount) === 0 ? 1 : 0;
-  const stmt = db.prepare(`INSERT INTO repayments (
-    vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine, paidAmount, pendingAmount, isPaid, docUrl, remarks, createdAt
-  ) VALUES (@vehicleNumber, @customerId, @customerName, @contact, @loanId, @dueDate, @dueAmount, @fine, @paidAmount, @pendingAmount, @isPaid, @docUrl, @remarks, @createdAt)`);
-  const info = stmt.run({
-    vehicleNumber, customerId: customerId || null, customerName, contact, loanId: loanId || null, dueDate,
-    dueAmount: Number(dueAmount), fine: Number(fine), paidAmount: Number(paidAmount),
-    pendingAmount: Number(pendingAmount), isPaid, docUrl: docUrl || null, remarks: remarks || null, createdAt: nowIso()
-  });
-  const row = db.prepare('SELECT * FROM repayments WHERE id = ?').get(info.lastInsertRowid);
-  // Auto-close loan when total repayments reach/exceed loan amount
+  const id = String(await nextId('repayments'));
+  const row = {
+    id: Number(id), vehicleNumber, customerId: customerId || null, customerName, contact, loanId: loanId || null, dueDate,
+    dueAmount: Number(dueAmount), fine: Number(fine), paidAmount: Number(paidAmount), pendingAmount: Number(pendingAmount), isPaid,
+    docUrl: docUrl || null, remarks: remarks || null, createdAt: nowIso()
+  };
+  await putItem('repayments', id, row);
+  // Auto-close loan
   if (loanId) {
     try {
-      const totals = db.prepare('SELECT SUM(paidAmount) as totalPaid FROM repayments WHERE loanId = ?').get(loanId);
-      const loan = db.prepare('SELECT amount, status FROM loanApplications WHERE id = ?').get(loanId);
-      if (loan && Number(totals?.totalPaid || 0) >= Number(loan.amount)) {
-        db.prepare('UPDATE loanApplications SET status = ? WHERE id = ?').run('Closed', loanId);
+      const reps = await listCollection('repayments');
+      const totals = reps.filter(r => String(r.loanId) === String(loanId)).reduce((a,b)=>a+Number(b.paidAmount||0),0);
+      const loan = await getItem('loanApplications', String(loanId));
+      if (loan && Number(totals) >= Number(loan.amount)) {
+        await updateItem('loanApplications', String(loanId), { status: 'Closed' });
       }
     } catch {}
   }
@@ -200,22 +214,18 @@ app.post('/api/repayments', (req, res) => {
 });
 
 // Update repayment
-app.put('/api/repayments/:id', (req, res) => {
-  const id = Number(req.params.id);
+app.put('/api/repayments/:id', async (req, res) => {
+  const id = String(req.params.id);
   const allowed = ['vehicleNumber','customerId','customerName','contact','loanId','dueDate','dueAmount','fine','paidAmount','pendingAmount','isPaid','remarks'];
   const payload = req.body || {};
   const keys = Object.keys(payload).filter(k => allowed.includes(k));
   if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
-  const sets = keys.map(k => `${k} = @${k}`).join(', ');
   if (payload.pendingAmount != null && payload.isPaid == null) {
     payload.isPaid = Number(payload.pendingAmount) === 0 ? 1 : 0;
-    keys.push('isPaid');
   }
-  const stmt = db.prepare(`UPDATE repayments SET ${sets} WHERE id = @id`);
-  const info = stmt.run({ id, ...payload });
-  if (info.changes === 0) return res.status(404).json({ error: 'Repayment not found' });
-  const row = db.prepare('SELECT * FROM repayments WHERE id = ?').get(id);
-  res.json(row);
+  const updated = await updateItem('repayments', id, payload);
+  if (!updated) return res.status(404).json({ error: 'Repayment not found' });
+  res.json(updated);
 });
 
 // Health
