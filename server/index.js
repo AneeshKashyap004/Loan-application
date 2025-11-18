@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import fs from 'fs';
 import path from 'path';
 import { db, init, migrate } from './db.js';
+import { putBase64Object, getSignedUrl } from './aws/s3.js';
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -221,17 +222,18 @@ app.put('/api/repayments/:id', (req, res) => {
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Base64 upload endpoint
-app.post('/api/uploads', (req, res) => {
+app.post('/api/uploads', async (req, res) => {
   const { filename, data } = req.body || {};
   if (!filename || !data) return res.status(400).json({ error: 'filename and data (base64) required' });
   try {
     const safeName = String(filename).replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const base64 = String(data).replace(/^data:[^;]+;base64,/, '');
-    const buffer = Buffer.from(base64, 'base64');
-    const dest = path.join(uploadsDir, `${Date.now()}_${safeName}`);
-    fs.writeFileSync(dest, buffer);
-    const urlPath = `/uploads/${path.basename(dest)}`;
-    res.json({ url: urlPath });
+    const ts = Date.now();
+    const key = `uploads/${ts}_${safeName}`;
+    const match = String(data).match(/^data:([^;]+);base64,/);
+    const contentType = match ? match[1] : 'application/octet-stream';
+    await putBase64Object(key, data, contentType);
+    const signedUrl = await getSignedUrl(key, 3600);
+    res.json({ url: signedUrl, key });
   } catch (e) {
     res.status(500).json({ error: 'Failed to save file' });
   }
