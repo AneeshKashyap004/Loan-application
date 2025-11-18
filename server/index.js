@@ -250,13 +250,31 @@ app.post('/api/uploads', async (req, res) => {
 });
 
 // Serve frontend build (Vite) if present
-const clientDir = path.resolve(process.cwd(), 'dist');
-if (fs.existsSync(clientDir)) {
+const moduleDir = path.dirname(new URL(import.meta.url).pathname);
+const distCandidates = [
+  path.resolve(process.cwd(), 'dist'),
+  path.resolve(moduleDir, '..', 'dist'), // if running from server/
+];
+const clientDir = distCandidates.find(p => fs.existsSync(p));
+if (clientDir) {
+  console.log('Serving static from', clientDir);
+  // Serve hashed assets with long cache
+  app.use('/assets', express.static(path.join(clientDir, 'assets'), { immutable: true, maxAge: '1y' }));
+  // Root and other static files
+  app.get('/', (req, res) => res.sendFile(path.join(clientDir, 'index.html')));
   app.use(express.static(clientDir));
+  // SPA fallback for HTML navigations only
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
-    res.sendFile(path.join(clientDir, 'index.html'));
+    const wantsHtml = String(req.headers.accept || '').includes('text/html');
+    const hasExt = /\.[a-zA-Z0-9]+$/.test(req.path);
+    if (wantsHtml && !hasExt) {
+      return res.sendFile(path.join(clientDir, 'index.html'));
+    }
+    return res.status(404).end();
   });
+} else {
+  console.warn('dist/ not found—UI will not be served');
 }
 
 app.listen(PORT, () => {
