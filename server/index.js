@@ -50,7 +50,7 @@ app.get('/api/customers/:id', (req, res) => {
 
 app.post('/api/customers', (req, res) => {
   const { name, phone, dealer, loanAmount, documentVerified, vehicleNumber } = req.body || {};
-  if (!name || !phone || loanAmount == null) {
+  if (!name || !phone) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   const autoNumber = (req.body && req.body.autoNumber) ? String(req.body.autoNumber) : null;
@@ -61,7 +61,7 @@ app.post('/api/customers', (req, res) => {
     name,
     phone,
     dealer: dealer ?? '',
-    loanAmount: Number(loanAmount),
+    loanAmount: (loanAmount == null ? 0 : Number(loanAmount)),
     vehicleNumber: vehicleNumber ?? null,
     customerType: null,
     documentVerified: documentVerified ? 1 : 0,
