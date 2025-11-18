@@ -29,6 +29,7 @@ export function LoanApplicationForm() {
     alternateContacts: '',
   });
   const [uploading, setUploading] = useState(false);
+  const [uploadedUrl, setUploadedUrl] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -92,6 +93,7 @@ export function LoanApplicationForm() {
         customerId: '', customerName: '', customerPhone: '', vehicleNumber: '', dealer: '', amount: '', emiAmount: '', tenure: '',
         loanDate: format(new Date(), 'yyyy-MM-dd'), dueDay: '', hoa: '', loanType: 'EMI', paymentMode: 'Cash', remarks: '', docs: '', alternateContacts: '',
       });
+      setUploadedUrl('');
     } catch (error) {
       console.error('Error saving loan application:', error);
       setMessage({ type: 'error', text: 'Failed to save loan application. Please try again.' });
@@ -217,7 +219,9 @@ export function LoanApplicationForm() {
                       try {
                         const base64 = reader.result;
                         const resp = await uploadsApi.upload(file.name, base64);
-                        setFormData(prev => ({ ...prev, docs: resp.url }));
+                        // Store key for backend; keep URL for preview
+                        setFormData(prev => ({ ...prev, docs: resp.key || resp.url }));
+                        setUploadedUrl(resp.url || '');
                       } catch (err) {
                         console.error(err);
                       } finally {
@@ -230,8 +234,8 @@ export function LoanApplicationForm() {
                   }
                 }} className="block" />
                 {uploading && <div className="text-sm text-gray-500">Uploading...</div>}
-                {formData.docs && (
-                  <div className="text-sm">Uploaded: <a href={toAbsoluteFileUrl(formData.docs)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Document</a></div>
+                {(uploadedUrl || formData.docs) && (
+                  <div className="text-sm">Uploaded: <a href={uploadedUrl || toAbsoluteFileUrl(formData.docs)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Document</a></div>
                 )}
               </div>
             </div>

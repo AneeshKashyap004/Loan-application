@@ -27,12 +27,27 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Helpers
 function nowIso() { return new Date().toISOString(); }
+async function resolveDoc(value) {
+  if (!value) return value;
+  const v = String(value);
+  if (/^https?:\/\//i.test(v)) return v; // already a URL (maybe signed)
+  // treat as S3 key
+  try { return await getSignedUrl(v, 3600); } catch { return v; }
+}
+async function mapDocs(row) {
+  if (!row) return row;
+  const out = { ...row };
+  if (out.docs) out.docs = await resolveDoc(out.docs);
+  if (out.docUrl) out.docUrl = await resolveDoc(out.docUrl);
+  return out;
+}
 
 // Customers
 app.get('/api/customers', async (req, res) => {
   const rows = await listCollection('customers');
   rows.sort((a,b) => Number(b.id) - Number(a.id));
-  res.json(rows);
+  const out = await Promise.all(rows.map(mapDocs));
+  res.json(out);
 });
 
 app.get('/api/customers/search', async (req, res) => {
@@ -40,11 +55,12 @@ app.get('/api/customers/search', async (req, res) => {
   if (!q) return res.json([]);
   const query = String(q).toLowerCase();
   const rows = await listCollection('customers');
-  const out = rows.filter(c =>
+  const filtered = rows.filter(c =>
     String(c.autoNumber||'').toLowerCase().includes(query) ||
     String(c.name||'').toLowerCase().includes(query) ||
     String(c.phone||'').toLowerCase().includes(query)
   ).sort((a,b)=>Number(b.id)-Number(a.id)).slice(0,10);
+  const out = await Promise.all(filtered.map(mapDocs));
   res.json(out);
 });
 
@@ -56,7 +72,7 @@ app.get('/api/customers/:id', async (req, res) => {
     row = all.find(c => String(c.autoNumber) === id);
   }
   if (!row) return res.status(404).json({ error: 'Customer not found' });
-  res.json(row);
+  res.json(await mapDocs(row));
 });
 
 app.post('/api/customers', async (req, res) => {
@@ -84,7 +100,8 @@ app.post('/api/customers', async (req, res) => {
 app.get('/api/loans', async (req, res) => {
   const rows = await listCollection('loanApplications');
   rows.sort((a,b) => Number(b.id) - Number(a.id));
-  res.json(rows);
+  const out = await Promise.all(rows.map(mapDocs));
+  res.json(out);
 });
 
 app.get('/api/loans/customer/:customerId', async (req, res) => {
@@ -96,7 +113,8 @@ app.get('/api/loans/customer/:customerId', async (req, res) => {
   if (!cust) rows = loans.filter(l => String(l.customerId) === key);
   else rows = loans.filter(l => [String(cust.autoNumber), String(cust.id)].includes(String(l.customerId)) || (cust.vehicleNumber && String(l.vehicleNumber) === String(cust.vehicleNumber)));
   rows.sort((a,b)=>Number(b.id)-Number(a.id));
-  res.json(rows);
+  const out = await Promise.all(rows.map(mapDocs));
+  res.json(out);
 });
 
 app.get('/api/loans/range', async (req, res) => {
@@ -105,7 +123,8 @@ app.get('/api/loans/range', async (req, res) => {
   const rows = await listCollection('loanApplications');
   const s = new Date(start).toISOString();
   const e = new Date(end).toISOString();
-  const out = rows.filter(r => r.loanDate >= s && r.loanDate <= e).sort((a,b)=>String(b.loanDate).localeCompare(String(a.loanDate)));
+  const filtered = rows.filter(r => r.loanDate >= s && r.loanDate <= e).sort((a,b)=>String(b.loanDate).localeCompare(String(a.loanDate)));
+  const out = await Promise.all(filtered.map(mapDocs));
   res.json(out);
 });
 
@@ -142,7 +161,8 @@ app.post('/api/loans', async (req, res) => {
 app.get('/api/repayments', async (req, res) => {
   const rows = await listCollection('repayments');
   rows.sort((a,b)=>Number(b.id)-Number(a.id));
-  res.json(rows);
+  const out = await Promise.all(rows.map(mapDocs));
+  res.json(out);
 });
 
 app.get('/api/repayments/customer/:customerId', async (req, res) => {
@@ -163,7 +183,8 @@ app.get('/api/repayments/due-today', async (req, res) => {
   const start = today.toISOString();
   const end = new Date(today.getTime() + 24*60*60*1000).toISOString();
   const rows = await listCollection('repayments');
-  const out = rows.filter(r => r.dueDate >= start && r.dueDate < end && Number(r.isPaid) === 0).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  const filtered = rows.filter(r => r.dueDate >= start && r.dueDate < end && Number(r.isPaid) === 0).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  const out = await Promise.all(filtered.map(mapDocs));
   res.json(out);
 });
 
@@ -172,7 +193,8 @@ app.get('/api/repayments/overdue', async (req, res) => {
   today.setHours(0,0,0,0);
   const start = today.toISOString();
   const rows = await listCollection('repayments');
-  const out = rows.filter(r => r.dueDate < start && Number(r.isPaid) === 0).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  const filtered = rows.filter(r => r.dueDate < start && Number(r.isPaid) === 0).sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  const out = await Promise.all(filtered.map(mapDocs));
   res.json(out);
 });
 
@@ -182,7 +204,8 @@ app.get('/api/repayments/range', async (req, res) => {
   const rows = await listCollection('repayments');
   const s = new Date(start).toISOString();
   const e = new Date(end).toISOString();
-  const out = rows.filter(r => r.dueDate >= s && r.dueDate <= e).sort((a,b)=>String(b.dueDate).localeCompare(String(a.dueDate)));
+  const filtered = rows.filter(r => r.dueDate >= s && r.dueDate <= e).sort((a,b)=>String(b.dueDate).localeCompare(String(a.dueDate)));
+  const out = await Promise.all(filtered.map(mapDocs));
   res.json(out);
 });
 
