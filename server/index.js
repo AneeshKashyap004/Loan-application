@@ -237,6 +237,16 @@ app.post('/api/uploads', (req, res) => {
   }
 });
 
+// Serve frontend build (Vite) if present
+const clientDir = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(clientDir)) {
+  app.use(express.static(clientDir));
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
+    res.sendFile(path.join(clientDir, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
