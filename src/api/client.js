@@ -4,6 +4,12 @@ export function toAbsoluteFileUrl(urlPath) {
   if (!urlPath) return '';
   try {
     if (/^https?:\/\//i.test(urlPath)) return urlPath;
+    // If this looks like an S3 object key we saved (e.g., 'uploads/123_file.pdf'),
+    // route through the backend to fetch a fresh signed URL each time.
+    if (/^uploads\//i.test(String(urlPath))) {
+      const base = new URL(BASE_URL, window.location.origin).toString().replace(/\/$/, '');
+      return `${base}/uploads/signed?key=${encodeURIComponent(String(urlPath))}`;
+    }
     const origin = (new URL(BASE_URL, window.location.origin)).origin;
     if (String(urlPath).startsWith('/')) return `${origin}${urlPath}`;
     return `${origin}/${urlPath.replace(/^\/?/, '')}`;

@@ -272,6 +272,19 @@ app.post('/api/uploads', async (req, res) => {
   }
 });
 
+// Redirect to a fresh signed URL for a stored S3 key
+app.get('/api/uploads/signed', async (req, res) => {
+  try {
+    const key = String(req.query.key || '');
+    if (!key) return res.status(400).json({ error: 'key required' });
+    const url = await getSignedUrl(key, 3600);
+    // Redirect so that <a href> works seamlessly
+    return res.redirect(302, url);
+  } catch (e) {
+    return res.status(404).json({ error: 'Could not sign URL' });
+  }
+});
+
 // Serve frontend build (Vite) if present
 const moduleDir = path.dirname(new URL(import.meta.url).pathname);
 const distCandidates = [
