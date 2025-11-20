@@ -68,7 +68,7 @@ export function LoanApplicationForm() {
         return;
       }
 
-      await loansApi.create({
+      const created = await loansApi.create({
         vehicleNumber: formData.vehicleNumber,
         customerId: formData.customerId,
         customerName: formData.customerName,
@@ -87,7 +87,7 @@ export function LoanApplicationForm() {
         alternateContacts: formData.alternateContacts,
       });
 
-      setMessage({ type: 'success', text: 'Loan application added successfully!' });
+      setMessage({ type: 'success', text: `Loan application added successfully! Loan ID: ${created?.id ?? ''}` });
       setSelectedCustomer(null);
       setFormData({
         customerId: '', customerName: '', customerPhone: '', vehicleNumber: '', dealer: '', amount: '', emiAmount: '', tenure: '',

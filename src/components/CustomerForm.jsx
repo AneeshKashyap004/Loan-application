@@ -19,7 +19,7 @@ export function CustomerForm() {
   const [customers, setCustomers] = useState([]);
   const [loanTotals, setLoanTotals] = useState(new Map());
   const [paidTotals, setPaidTotals] = useState(new Map());
-  const [loanIds, setLoanIds] = useState(new Map());
+  const [loanCodes, setLoanCodes] = useState(new Map());
   const [showForm, setShowForm] = useState(false);
 
   const loadCustomers = async () => {
@@ -43,7 +43,7 @@ export function CustomerForm() {
 
       // Aggregate loan totals per autoNumber with fallbacks (autoNumber, numeric id, vehicleNumber)
       const totals = new Map();
-      const ids = new Map();
+      const codes = new Map();
       (loans || []).forEach(l => {
         const amount = Number(l.amount) || 0;
         const veh = String(l.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
@@ -62,13 +62,14 @@ export function CustomerForm() {
         }
         if (auto) {
           totals.set(auto, (totals.get(auto) || 0) + amount);
-          const arr = ids.get(auto) || [];
-          arr.push(String(l.id));
-          ids.set(auto, arr);
+          const arr = codes.get(auto) || [];
+          const code = l.loanCode || '';
+          if (code && !arr.includes(code)) arr.push(code);
+          codes.set(auto, arr);
         }
       });
       setLoanTotals(totals);
-      setLoanIds(ids);
+      setLoanCodes(codes);
 
       // Aggregate repayments (paid) per autoNumber
       const paid = new Map();
@@ -214,7 +215,7 @@ export function CustomerForm() {
                 <th className="py-2 pr-4">Phone</th>
                 <th className="py-2 pr-4">Dealer</th>
                 <th className="py-2 pr-4">Balance</th>
-                <th className="py-2 pr-4">Loan ID(s)</th>
+                <th className="py-2 pr-4">Loan ID</th>
                 <th className="py-2 pr-4">Docs</th>
                 <th className="py-2 pr-4">Created</th>
               </tr>
@@ -230,7 +231,7 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.phone}</td>
                     <td className="py-2 pr-4">{c.dealer}</td>
                     <td className="py-2 pr-4">₹{Math.max(0, Number(loanTotals.get(c.autoNumber) || 0) - Number(paidTotals.get(c.autoNumber) || 0)).toLocaleString()}</td>
-                    <td className="py-2 pr-4">{(loanIds.get(c.autoNumber) || []).join(', ') || '—'}</td>
+                    <td className="py-2 pr-4">{(loanCodes.get(c.autoNumber) || []).join(', ') || '—'}</td>
                     <td className="py-2 pr-4">{c.docs ? (<a href={toAbsoluteFileUrl(c.docs)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>) : '—'}</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                   </tr>

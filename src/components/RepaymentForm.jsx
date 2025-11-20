@@ -62,13 +62,35 @@ export function RepaymentForm() {
       try {
         const start = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
         const end = new Date(`${duesDate}T23:59:59.999Z`).toISOString();
-        const [custs, dues] = await Promise.all([
+        const sel = new Date(duesDate);
+        const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
+        const [custs, dues, loans, repsForMonth] = await Promise.all([
           customersApi.list(),
           repaymentsApi.listByRange(start, end),
+          loansApi.list(),
+          repaymentsApi.listByRange(new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString(), new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()),
         ]);
         setCustomers(custs);
-        // Only unpaid dues
-        setDueToday((dues || []).filter(d => Number(d.isPaid) === 0));
+        const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
+        const paidLoanKeys = new Set((repsForMonth || []).filter(r => r.loanId != null).map(r => `${r.loanId}:${yyyymm}`));
+        const day = sel.getUTCDate();
+        const virtualRows = (loans || [])
+          .filter(l => l.dueDay != null && Number(l.dueDay) === day)
+          .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
+          .map(l => ({
+            id: `loan-${l.id}-${yyyymm}`,
+            loanId: l.id,
+            customerId: l.customerId ?? null,
+            customerName: l.customerName || '',
+            vehicleNumber: l.vehicleNumber || '',
+            dueDate: new Date(`${duesDate}T00:00:00.000Z`).toISOString(),
+            dueAmount: (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null),
+            fine: 0,
+            paidAmount: 0,
+            isPaid: 0,
+            remarks: '',
+          }));
+        setDueToday([...(virtualRows || []), ...unpaid]);
       } catch (e) {
         console.error('Failed to load dues/customers', e);
       }
@@ -80,12 +102,35 @@ export function RepaymentForm() {
     try {
       const start = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
       const end = new Date(`${duesDate}T23:59:59.999Z`).toISOString();
-      const [custs, dues] = await Promise.all([
+      const sel = new Date(duesDate);
+      const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
+      const [custs, dues, loans, repsForMonth] = await Promise.all([
         customersApi.list(),
         repaymentsApi.listByRange(start, end),
+        loansApi.list(),
+        repaymentsApi.listByRange(new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString(), new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()),
       ]);
       setCustomers(custs);
-      setDueToday((dues || []).filter(d => Number(d.isPaid) === 0));
+      const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
+      const paidLoanKeys = new Set((repsForMonth || []).filter(r => r.loanId != null).map(r => `${r.loanId}:${yyyymm}`));
+      const day = sel.getUTCDate();
+      const virtualRows = (loans || [])
+        .filter(l => l.dueDay != null && Number(l.dueDay) === day)
+        .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
+        .map(l => ({
+          id: `loan-${l.id}-${yyyymm}`,
+          loanId: l.id,
+          customerId: l.customerId ?? null,
+          customerName: l.customerName || '',
+          vehicleNumber: l.vehicleNumber || '',
+          dueDate: new Date(`${duesDate}T00:00:00.000Z`).toISOString(),
+          dueAmount: (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null),
+          fine: 0,
+          paidAmount: 0,
+          isPaid: 0,
+          remarks: '',
+        }));
+      setDueToday([...(virtualRows || []), ...unpaid]);
     } catch (e) { console.error(e); }
   };
 
@@ -415,7 +460,34 @@ export function RepaymentForm() {
             </div>
             <h2 className="text-lg font-semibold text-gray-900 pb-1">Dues</h2>
           </div>
-          <button onClick={reloadDueToday} className="text-sm text-blue-600 hover:underline">Refresh</button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => {
+              try {
+                const headers = ['Customer ID','Customer','Vehicle','Due Amount','Due Date','Remark'];
+                const rows = dueToday.map(r => {
+                  const cust = customers.find(c => c.id === r.customerId) || customers.find(c => (c.vehicleNumber || '').toUpperCase() === String(r.vehicleNumber || '').toUpperCase());
+                  const autoId = cust?.autoNumber || '';
+                  return [
+                    autoId,
+                    r.customerName || '',
+                    r.vehicleNumber || '',
+                    String(r.dueAmount ?? ''),
+                    formatDateDMY(r.dueDate),
+                    r.remarks || ''
+                  ];
+                });
+                const csv = [headers.join(','), ...rows.map(cols => cols.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(','))].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `dues_${duesDate}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch (e) { console.error('CSV export failed', e); }
+            }} className="text-sm text-blue-600 hover:underline">Download CSV</button>
+            <button onClick={reloadDueToday} className="text-sm text-blue-600 hover:underline">Refresh</button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
