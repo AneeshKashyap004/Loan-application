@@ -159,7 +159,7 @@ export function Reports() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left">Due Date</th>
+                      <th className="px-3 py-2 text-left">Paid Date</th>
                       <th className="px-3 py-2 text-left">Due</th>
                       <th className="px-3 py-2 text-left">Fine</th>
                       <th className="px-3 py-2 text-left">Paid</th>

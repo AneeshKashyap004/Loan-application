@@ -14,7 +14,7 @@ import {
 } from './data/store.js';
 
 const app = express();
-const PORT = process.env.PORT || 8787;
+const PORT = process.env.PORT || 8789;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
