@@ -46,8 +46,9 @@ async function mapDocs(row) {
 // Customers
 app.get('/api/customers', async (req, res) => {
   const rows = await listCollection('customers');
-  rows.sort((a,b) => Number(b.id) - Number(a.id));
-  const out = await Promise.all(rows.map(mapDocs));
+  const alive = rows.filter(r => !r.deletedAt);
+  alive.sort((a,b) => Number(b.id) - Number(a.id));
+  const out = await Promise.all(alive.map(mapDocs));
   res.json(out);
 });
 
@@ -56,7 +57,7 @@ app.get('/api/customers/search', async (req, res) => {
   if (!q) return res.json([]);
   const query = String(q).toLowerCase();
   const rows = await listCollection('customers');
-  const filtered = rows.filter(c =>
+  const filtered = rows.filter(c => !c.deletedAt).filter(c =>
     String(c.autoNumber||'').toLowerCase().includes(query) ||
     String(c.name||'').toLowerCase().includes(query) ||
     String(c.phone||'').toLowerCase().includes(query)
@@ -127,6 +128,24 @@ app.put('/api/customers/:id', async (req, res) => {
     return res.json(await mapDocs(updated));
   } catch (e) {
     return res.status(500).json({ error: 'Failed to update customer' });
+  }
+});
+
+// Soft-delete a customer (by numeric id or autoNumber)
+app.delete('/api/customers/:id', async (req, res) => {
+  try {
+    const key = String(req.params.id);
+    let target = await getItem('customers', key);
+    if (!target) {
+      const all = await listCollection('customers');
+      target = all.find(c => String(c.autoNumber) === key);
+    }
+    if (!target) return res.status(404).json({ error: 'Customer not found' });
+    if (target.deletedAt) return res.json(target);
+    const updated = await updateItem('customers', String(target.id), { deletedAt: nowIso() });
+    return res.json(updated);
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to delete customer' });
   }
 });
 

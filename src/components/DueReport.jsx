@@ -238,13 +238,13 @@ export function DueReport() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in-up">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Due Report</h1>
         <p className="text-gray-500 mt-1">View and adjust due dates. Changes move the EMI to the new day.</p>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border p-4 flex items-end gap-4">
+      <div className="bg-white rounded-lg shadow-sm border p-4 flex items-end gap-4 transition-shadow duration-200 hover:shadow-md">
         <div className="flex-1 max-w-xs">
           <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
           <DateInputDMY name="selectedDate" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
@@ -260,7 +260,7 @@ export function DueReport() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border overflow-auto">
+      <div className="bg-white rounded-lg shadow-sm border overflow-auto transition-shadow duration-200 hover:shadow-md">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-blue-50/70 sticky top-0 z-10">
             <tr>

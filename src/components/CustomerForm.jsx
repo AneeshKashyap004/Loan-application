@@ -95,6 +95,31 @@ export function CustomerForm() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!editing) return;
+    const idToType = editing.autoNumber || String(editing.id);
+    const input = window.prompt(`Type the Customer ID to confirm delete: ${idToType}`);
+    if (!input) return;
+    if (String(input).trim() !== String(idToType)) {
+      setMessage({ type: 'error', text: 'Confirmation did not match Customer ID. Deletion cancelled.' });
+      return;
+    }
+    try {
+      setLoading(true);
+      await customersApi.delete(String(editing.id || idToType));
+      setMessage({ type: 'success', text: 'Customer account deleted successfully.' });
+      await loadCustomers();
+      setEditing(null);
+      setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' });
+      setShowForm(false);
+    } catch (e) {
+      console.error('Delete failed', e);
+      setMessage({ type: 'error', text: 'Failed to delete customer. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => { loadCustomers(); }, []);
 
   const handleChange = (e) => {
@@ -219,7 +244,10 @@ export function CustomerForm() {
             <div className="flex items-center gap-3">
               <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">{loading ? 'Saving...' : (editing ? 'Save Changes' : 'Add Customer')}</Button>
               {editing && (
-                <Button type="button" variant="outline" onClick={() => { setEditing(null); setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' }); setShowForm(false); }}>Cancel</Button>
+                <>
+                  <Button type="button" variant="outline" onClick={() => { setEditing(null); setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' }); setShowForm(false); }}>Cancel</Button>
+                  <Button type="button" variant="destructive" onClick={handleDelete} disabled={loading}>Delete</Button>
+                </>
               )}
             </div>
           </form>

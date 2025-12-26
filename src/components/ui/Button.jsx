@@ -3,7 +3,7 @@ import { cn } from '@/utils/cn';
 
 const Button = React.forwardRef(
   ({ className, variant = 'default', size = 'default', children, ...props }, ref) => {
-    const baseStyles = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
+    const baseStyles = 'inline-flex items-center justify-center rounded-md font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50';
     
     const variants = {
       default: 'bg-blue-600 text-white hover:bg-blue-700',
