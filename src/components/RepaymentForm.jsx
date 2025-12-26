@@ -74,10 +74,18 @@ export function RepaymentForm() {
         ]);
         setCustomers(custs);
         const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
-        const paidLoanKeys = new Set((repsForMonth || []).filter(r => r.loanId != null).map(r => `${r.loanId}:${yyyymm}`));
+        // Build a map of loanId -> total paidAmount in this month
+        const paidSumByLoanForMonth = new Map();
+        (repsForMonth || []).forEach(r => {
+          if (r.loanId == null) return;
+          const key = String(r.loanId);
+          paidSumByLoanForMonth.set(key, (paidSumByLoanForMonth.get(key) || 0) + (Number(r.paidAmount) || 0));
+        });
         const day = sel.getUTCDate();
         // Build paid months map up to selected month end
         const paidMonthsByLoan = new Map();
+        // Build total paid up to selected month end
+        const totalPaidByLoan = new Map();
         (repsUpToSelected || []).forEach(r => {
           if (r.loanId == null) return;
           const d = new Date(r.dueDate);
@@ -85,6 +93,7 @@ export function RepaymentForm() {
           const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
           set.add(key);
           paidMonthsByLoan.set(String(r.loanId), set);
+          totalPaidByLoan.set(String(r.loanId), (totalPaidByLoan.get(String(r.loanId)) || 0) + (Number(r.paidAmount) || 0));
         });
       setCountNextMonth(false);
 
@@ -96,7 +105,20 @@ export function RepaymentForm() {
 
         const virtualRows = (loans || [])
           .filter(l => l.dueDay != null && Number(l.dueDay) === day)
-          .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
+          // Exclude loans that are closed or fully settled up to this month end
+          .filter(l => {
+            if (String(l.status || '').toLowerCase() === 'closed') return false;
+            const totalPaid = totalPaidByLoan.get(String(l.id)) || 0;
+            if (l.amount != null && Number(totalPaid) >= Number(l.amount)) return false;
+            return true;
+          })
+          .filter(l => {
+            const baseEmi = (l.emiAmount != null && l.emiAmount !== '')
+              ? Number(l.emiAmount)
+              : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+            const sumPaid = paidSumByLoanForMonth.get(String(l.id)) || 0;
+            return !(baseEmi != null && isFinite(baseEmi) && sumPaid >= baseEmi);
+          })
           .map(l => {
             const dueDateIso = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
             const baseEmi = (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
@@ -162,10 +184,18 @@ export function RepaymentForm() {
       ]);
       setCustomers(custs);
       const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
-      const paidLoanKeys = new Set((repsForMonth || []).filter(r => r.loanId != null).map(r => `${r.loanId}:${yyyymm}`));
+      // Build a map of loanId -> total paidAmount in this month
+      const paidSumByLoanForMonth = new Map();
+      (repsForMonth || []).forEach(r => {
+        if (r.loanId == null) return;
+        const key = String(r.loanId);
+        paidSumByLoanForMonth.set(key, (paidSumByLoanForMonth.get(key) || 0) + (Number(r.paidAmount) || 0));
+      });
       const day = sel.getUTCDate();
       // Build paid months map up to selected month end
       const paidMonthsByLoan = new Map();
+      // Build total paid up to selected month end
+      const totalPaidByLoan = new Map();
       (repsUpToSelected || []).forEach(r => {
         if (r.loanId == null) return;
         const d = new Date(r.dueDate);
@@ -173,6 +203,7 @@ export function RepaymentForm() {
         const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
         set.add(key);
         paidMonthsByLoan.set(String(r.loanId), set);
+        totalPaidByLoan.set(String(r.loanId), (totalPaidByLoan.get(String(r.loanId)) || 0) + (Number(r.paidAmount) || 0));
       });
 
       function monthsBetweenInclusiveUTC(fromIso, toIso) {
@@ -183,7 +214,20 @@ export function RepaymentForm() {
 
       const virtualRows = (loans || [])
         .filter(l => l.dueDay != null && Number(l.dueDay) === day)
-        .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
+        // Exclude loans that are closed or fully settled up to this month end
+        .filter(l => {
+          if (String(l.status || '').toLowerCase() === 'closed') return false;
+          const totalPaid = totalPaidByLoan.get(String(l.id)) || 0;
+          if (l.amount != null && Number(totalPaid) >= Number(l.amount)) return false;
+          return true;
+        })
+        .filter(l => {
+          const baseEmi = (l.emiAmount != null && l.emiAmount !== '')
+            ? Number(l.emiAmount)
+            : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+          const sumPaid = paidSumByLoanForMonth.get(String(l.id)) || 0;
+          return !(baseEmi != null && isFinite(baseEmi) && sumPaid >= baseEmi);
+        })
         .map(l => {
           const dueDateIso = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
           const baseEmi = (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);

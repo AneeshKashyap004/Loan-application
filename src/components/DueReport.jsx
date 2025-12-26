@@ -53,18 +53,21 @@ export function DueReport() {
         return { ...r, autoNumber, _source: 'repayment' };
       });
 
-      // Build a set of loanId for this month already represented by repayments
+      // Build a map of loanId -> total paidAmount in this month; consider month covered if sum >= base EMI
       const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
-      const paidLoanKeys = new Set(
-        (repsForMonth || [])
-          .filter(r => r.loanId != null)
-          .map(r => `${r.loanId}:${yyyymm}`)
-      );
+      const paidSumByLoanForMonth = new Map();
+      (repsForMonth || []).forEach(r => {
+        if (r.loanId == null) return;
+        const key = String(r.loanId);
+        paidSumByLoanForMonth.set(key, (paidSumByLoanForMonth.get(key) || 0) + (Number(r.paidAmount) || 0));
+      });
 
       // From loans, add "virtual" dues where dueDay matches the selected day and not yet in paidLoanKeys
       const day = sel.getUTCDate();
       // Build a map of loanId -> Set of paid months (YYYY-MM) up to selected month end
       const paidMonthsByLoan = new Map();
+      // Build a map of loanId -> total paid up to selected month end
+      const totalPaidByLoan = new Map();
       (repsUpToSelected || []).forEach(r => {
         if (r.loanId == null) return;
         const d = new Date(r.dueDate);
@@ -72,6 +75,7 @@ export function DueReport() {
         const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
         set.add(key);
         paidMonthsByLoan.set(String(r.loanId), set);
+        totalPaidByLoan.set(String(r.loanId), (totalPaidByLoan.get(String(r.loanId)) || 0) + (Number(r.paidAmount) || 0));
       });
 
       function monthsBetweenInclusiveUTC(fromIso, toIso) {
@@ -86,7 +90,43 @@ export function DueReport() {
 
       const loanDueRows = (loans || [])
         .filter(l => l.dueDay != null && Number(l.dueDay) === day)
-        .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
+        // Exclude loans that are closed or fully settled up to this month end
+        .filter(l => {
+          if (String(l.status || '').toLowerCase() === 'closed') return false;
+          const totalPaid = totalPaidByLoan.get(String(l.id)) || 0;
+          if (l.amount != null) {
+            const amt = Number(l.amount);
+            if (Number(totalPaid) >= amt - 1 /* tolerance */) return false;
+          }
+          // Also exclude if tenure months already covered
+          try {
+            if (l.tenure != null && l.loanDate) {
+              const due = new Date(monthEnd);
+              const loanStart = new Date(l.loanDate);
+              const firstDueYear = loanStart.getUTCFullYear() + Math.floor((loanStart.getUTCMonth()+1)/12);
+              const firstDueMonth = (loanStart.getUTCMonth()+1) % 12;
+              const fromYear = firstDueYear;
+              const fromMonth = firstDueMonth;
+              const toYear = due.getUTCFullYear();
+              const toMonth = due.getUTCMonth();
+              const diff = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+              const paidSet = paidMonthsByLoan.get(String(l.id)) || new Set();
+              if (paidSet.size >= Number(l.tenure)) return false;
+              if (diff > Number(l.tenure)) {
+                // Past tenure end, treat as completed
+                return false;
+              }
+            }
+          } catch {}
+          return true;
+        })
+        .filter(l => {
+          const baseEmi = (l.emiAmount != null && l.emiAmount !== '')
+            ? Number(l.emiAmount)
+            : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+          const sumPaid = paidSumByLoanForMonth.get(String(l.id)) || 0;
+          return !(baseEmi != null && isFinite(baseEmi) && sumPaid >= baseEmi);
+        })
         .map(l => {
           const veh = String(l.vehicleNumber || '').toUpperCase();
           const autoNumber = (l.customerId != null && autoNumberByCustomerId.get(l.customerId)) || autoNumberByVehicle.get(veh) || '';
