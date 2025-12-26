@@ -30,10 +30,17 @@ function Sidebar() {
 
   return (
     <div className="w-64 bg-white border-r min-h-screen flex flex-col">
-      {/* Logo */}
-      <div className="p-6 border-b">
-        <h1 className="text-xl font-bold text-gray-900">Deepak Bank</h1>
-        <p className="text-sm text-gray-500">Loan Management</p>
+      {/* Logo / Brand */}
+      <div className="p-6 border-b bg-gradient-to-r from-blue-600 to-blue-500">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+            <LayoutDashboard className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white">Deepak Bank</h1>
+            <p className="text-xs text-blue-100">Loan Management</p>
+          </div>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -48,10 +55,10 @@ function Sidebar() {
                   end={item.path === '/'}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors',
+                      'flex items-center space-x-3 px-4 py-3 rounded-lg transition-all',
                       isActive
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     )
                   }
                 >
@@ -86,9 +93,16 @@ function Sidebar() {
 
 function Layout({ children }) {
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gradient-to-br from-white via-blue-50 to-white">
       <Sidebar />
       <main className="flex-1 overflow-auto">
+        {/* Top bar */}
+        <div className="sticky top-0 z-10 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b">
+          <div className="px-8 py-4">
+            <h2 className="text-lg font-semibold text-gray-800">Loan Management Portal</h2>
+          </div>
+        </div>
+        {/* Page container */}
         <div className="p-8">
           {children}
         </div>

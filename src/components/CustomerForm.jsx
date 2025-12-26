@@ -233,8 +233,8 @@ export function CustomerForm() {
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-600">
+            <thead className="bg-blue-50/70 sticky top-0 z-10">
+              <tr className="text-left text-blue-700">
                 <th className="py-2 pr-4">Customer ID</th>
                 <th className="py-2 pr-4">Name</th>
                 <th className="py-2 pr-4">Phone</th>
@@ -251,7 +251,7 @@ export function CustomerForm() {
                 <tr><td colSpan="9" className="py-4 text-gray-500">No customers found.</td></tr>
               ) : (
                 customers.map(c => (
-                  <tr key={c.id} className="border-t">
+                  <tr key={c.id} className="border-t hover:bg-gray-50/60 odd:bg-white even:bg-gray-50/60">
                     <td className="py-2 pr-4 font-medium">{c.autoNumber}</td>
                     <td className="py-2 pr-4">{c.name}</td>
                     <td className="py-2 pr-4">{c.phone}</td>

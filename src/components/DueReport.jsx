@@ -262,20 +262,20 @@ export function DueReport() {
 
       <div className="bg-white rounded-lg shadow-sm border overflow-auto">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-blue-50/70 sticky top-0 z-10">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer ID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Amount</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carryover</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Customer ID</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Customer</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Vehicle</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Due Amount</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Carryover</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Due Date</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-blue-700 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {rows.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
+              <tr key={r.id} className="hover:bg-gray-50 odd:bg-white even:bg-gray-50/60">
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.autoNumber || ''}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.customerName || ''}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.vehicleNumber || ''}</td>

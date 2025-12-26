@@ -663,8 +663,8 @@ export function RepaymentForm() {
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-600">
+            <thead className="bg-blue-50/70">
+              <tr className="text-left text-blue-700">
                 <th className="py-2 pr-4">Customer ID</th>
                 <th className="py-2 pr-4">Customer</th>
                 <th className="py-2 pr-4">Vehicle</th>
@@ -685,7 +685,7 @@ export function RepaymentForm() {
                   const cust = customers.find(c => c.id === r.customerId) || customers.find(c => (c.vehicleNumber || '').toUpperCase() === String(r.vehicleNumber || '').toUpperCase());
                   const autoId = cust?.autoNumber || '';
                   return (
-                    <tr key={r.id} className="border-t">
+                    <tr key={r.id} className="border-t hover:bg-gray-50/60">
                       <td className="py-2 pr-4 font-medium">{autoId}</td>
                       <td className="py-2 pr-4">{r.customerName}</td>
                       <td className="py-2 pr-4">{r.vehicleNumber}</td>

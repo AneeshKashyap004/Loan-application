@@ -152,8 +152,8 @@ export function Reports() {
               <h3 className="text-md font-semibold mb-3">Loans</h3>
               <div className="overflow-auto border rounded">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
+                  <thead className="bg-blue-50/70">
+                    <tr className="text-blue-700">
                       <th className="px-3 py-2 text-left">Vehicle</th>
                       <th className="px-3 py-2 text-left">Amount</th>
                       <th className="px-3 py-2 text-left">Tenure</th>
@@ -170,7 +170,7 @@ export function Reports() {
                         .reduce((s, r) => s + (Number(r.paidAmount) || 0), 0);
                       const outstanding = Math.max(0, Number(l.amount || 0) - totalPaid);
                       return (
-                        <tr key={l.id} className="border-t">
+                        <tr key={l.id} className="border-t hover:bg-gray-50/60">
                           <td className="px-3 py-2">{l.vehicleNumber}</td>
                           <td className="px-3 py-2">{l.amount}</td>
                           <td className="px-3 py-2">{l.tenure}</td>
@@ -193,8 +193,8 @@ export function Reports() {
               <h3 className="text-md font-semibold mb-3">Repayments</h3>
               <div className="overflow-auto border rounded">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
+                  <thead className="bg-blue-50/70">
+                    <tr className="text-blue-700">
                       <th className="px-3 py-2 text-left">Paid Date/Due Date</th>
                       <th className="px-3 py-2 text-left">Due</th>
                       <th className="px-3 py-2 text-left">Fine</th>
@@ -206,7 +206,7 @@ export function Reports() {
                   </thead>
                   <tbody>
                     {repayments.map(r => (
-                      <tr key={r.id} className="border-t">
+                      <tr key={r.id} className="border-t hover:bg-gray-50/60">
                         <td className="px-3 py-2">{formatDateDMY(r.dueDate)}</td>
                         <td className="px-3 py-2">{r.dueAmount}</td>
                         <td className="px-3 py-2">{r.fine}</td>
