@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -14,7 +15,7 @@ import {
 } from './data/store.js';
 
 const app = express();
-const PORT = process.env.PORT || 8789;
+const PORT = Number(process.env.PORT) || 8789;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -94,6 +95,39 @@ app.post('/api/customers', async (req, res) => {
   };
   await putItem('customers', id, row);
   res.status(201).json(row);
+});
+
+// Update customer
+app.put('/api/customers/:id', async (req, res) => {
+  try {
+    const key = String(req.params.id);
+    let target = await getItem('customers', key);
+    if (!target) {
+      const all = await listCollection('customers');
+      target = all.find(c => String(c.autoNumber) === key);
+    }
+    if (!target) return res.status(404).json({ error: 'Customer not found' });
+
+    const allowed = ['name','phone','dealer','vehicleNumber','documentVerified','autoNumber'];
+    const payload = req.body || {};
+    const updates = {};
+    for (const k of allowed) {
+      if (payload[k] != null) updates[k] = payload[k];
+    }
+    if (updates.documentVerified != null) {
+      updates.documentVerified = updates.documentVerified ? 1 : 0;
+    }
+    if (updates.vehicleNumber != null) {
+      updates.vehicleNumber = String(updates.vehicleNumber || '');
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    const updated = await updateItem('customers', String(target.id), updates);
+    return res.json(await mapDocs(updated));
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to update customer' });
+  }
 });
 
 // Loans
@@ -210,16 +244,75 @@ app.get('/api/repayments/range', async (req, res) => {
 });
 
 app.post('/api/repayments', async (req, res) => {
-  const { vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine = 0, paidAmount = 0, pendingAmount = 0, remarks, docUrl } = req.body || {};
-  if (!vehicleNumber || !customerName || !contact || !dueDate || dueAmount == null) {
+  const { vehicleNumber, customerId, customerName, contact, loanId, dueDate, dueAmount, fine = 0, paidAmount = 0, pendingAmount = null, remarks, docUrl } = req.body || {};
+  if (!vehicleNumber || !customerName || !contact || !dueDate) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-  const isPaid = Number(pendingAmount) === 0 ? 1 : 0;
+  // Carryforward logic when loanId present: compute base EMI and missed months up to dueDate
+  let computedDueAmount = (dueAmount == null ? 0 : Number(dueAmount));
+  let carryMultiplier = 1;
+  try {
+    if (loanId) {
+      const loan = await getItem('loanApplications', String(loanId));
+      if (loan) {
+        const baseEmi = (loan.emiAmount != null && loan.emiAmount !== '')
+          ? Number(loan.emiAmount)
+          : (loan.amount && loan.tenure ? Number(loan.amount) / Number(loan.tenure || 1) : null);
+        if (baseEmi != null && isFinite(baseEmi) && loan.loanDate && dueDate) {
+          const due = new Date(dueDate);
+          // Build set of paid months up to due month inclusive
+          const reps = await listCollection('repayments');
+          const paidSet = new Set(
+            reps.filter(r => String(r.loanId) === String(loanId)).map(r => {
+              const d = new Date(r.dueDate);
+              return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+            })
+          );
+          const loanStart = new Date(loan.loanDate);
+          // First EMI is due in the month AFTER loan date
+          const firstDueYear = loanStart.getUTCFullYear() + Math.floor((loanStart.getUTCMonth()+1)/12);
+          const firstDueMonth = (loanStart.getUTCMonth()+1) % 12; // 0-11
+          const fromYear = firstDueYear;
+          const fromMonth = firstDueMonth;
+          const toYear = due.getUTCFullYear();
+          const toMonth = due.getUTCMonth();
+          const diff = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+          let missed = 0;
+          if (diff > 0) {
+            for (let i = 0; i < diff; i++) {
+              const y = fromYear + Math.floor((fromMonth + i) / 12);
+              const m = (fromMonth + i) % 12;
+              const key = `${y}-${String(m+1).padStart(2,'0')}`;
+              if (!paidSet.has(key)) missed++;
+            }
+          }
+          carryMultiplier = Math.max(1, missed);
+          computedDueAmount = Math.round(baseEmi * carryMultiplier);
+        }
+      }
+    }
+  } catch {}
+
+  // Determine pending if not provided
+  const fineNum = Number(fine) || 0;
+  const paidNum = Number(paidAmount) || 0;
+  const pendingComputed = computedDueAmount + fineNum - paidNum;
+  const pendingFinal = (pendingAmount == null ? pendingComputed : Number(pendingAmount));
+  const isPaid = Number(pendingFinal) === 0 ? 1 : 0;
   const id = String(await nextId('repayments'));
   const row = {
     id: Number(id), vehicleNumber, customerId: customerId || null, customerName, contact, loanId: loanId || null, dueDate,
-    dueAmount: Number(dueAmount), fine: Number(fine), paidAmount: Number(paidAmount), pendingAmount: Number(pendingAmount), isPaid,
-    docUrl: docUrl || null, remarks: remarks || null, createdAt: nowIso()
+    dueAmount: Number(computedDueAmount), fine: Number(fineNum), paidAmount: Number(paidNum), pendingAmount: Number(pendingFinal), isPaid,
+    docUrl: docUrl || null,
+    remarks: (() => {
+      const base = remarks || '';
+      if (loanId && carryMultiplier > 1) {
+        const tag = '(past emi included)';
+        return base && String(base).trim() ? `${base} ${tag}` : tag;
+      }
+      return base || null;
+    })(),
+    createdAt: nowIso()
   };
   await putItem('repayments', id, row);
   // Auto-close loan
@@ -245,6 +338,19 @@ app.put('/api/repayments/:id', async (req, res) => {
   if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
   if (payload.pendingAmount != null && payload.isPaid == null) {
     payload.isPaid = Number(payload.pendingAmount) === 0 ? 1 : 0;
+  }
+  // Append remarks with timestamp if provided, instead of overwriting
+  if (payload.remarks != null) {
+    try {
+      const existing = await getItem('repayments', id);
+      const ts = new Date().toISOString();
+      const newLine = `[${ts}] ${String(payload.remarks)}`;
+      if (existing && existing.remarks && String(existing.remarks).trim() && String(existing.remarks) !== String(payload.remarks)) {
+        payload.remarks = String(existing.remarks).trim() + '\n' + newLine;
+      } else {
+        payload.remarks = newLine;
+      }
+    } catch {}
   }
   const updated = await updateItem('repayments', id, payload);
   if (!updated) return res.status(404).json({ error: 'Repayment not found' });
@@ -313,6 +419,23 @@ if (clientDir) {
   console.warn('dist/ not found—UI will not be served');
 }
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+// Start server with basic port fallback if default port is busy.
+// If PORT env is explicitly set, we do not fallback and surface the error.
+function startServer(port, attemptsLeft = 5) {
+  const server = app.listen(port, () => {
+    console.log(`Server listening on http://localhost:${port}`);
+  });
+  server.on('error', (err) => {
+    // Only attempt fallback when using the default port (i.e., no explicit PORT env)
+    if (err && err.code === 'EADDRINUSE' && !process.env.PORT && attemptsLeft > 0) {
+      const next = port + 1;
+      console.warn(`Port ${port} in use. Retrying on ${next}...`);
+      startServer(next, attemptsLeft - 1);
+    } else {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+    }
+  });
+}
+
+startServer(PORT);

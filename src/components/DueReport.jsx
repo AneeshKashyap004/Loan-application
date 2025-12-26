@@ -38,11 +38,12 @@ export function DueReport() {
       const sel = new Date(selectedDate);
       const monthStart = new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString();
       const monthEnd = new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString();
-      const [custs, repsForDay, repsForMonth, loans] = await Promise.all([
+      const [custs, repsForDay, repsForMonth, loans, repsUpToSelected] = await Promise.all([
         customersApi.list(),
         repaymentsApi.listByRange(start, end),
         repaymentsApi.listByRange(monthStart, monthEnd),
         loansApi.list(),
+        repaymentsApi.listByRange(new Date('1970-01-01T00:00:00.000Z').toISOString(), monthEnd),
       ]);
       setCustomers(custs);
       // Normalize repayments rows, add autoNumber
@@ -62,6 +63,27 @@ export function DueReport() {
 
       // From loans, add "virtual" dues where dueDay matches the selected day and not yet in paidLoanKeys
       const day = sel.getUTCDate();
+      // Build a map of loanId -> Set of paid months (YYYY-MM) up to selected month end
+      const paidMonthsByLoan = new Map();
+      (repsUpToSelected || []).forEach(r => {
+        if (r.loanId == null) return;
+        const d = new Date(r.dueDate);
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+        const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
+        set.add(key);
+        paidMonthsByLoan.set(String(r.loanId), set);
+      });
+
+      function monthsBetweenInclusiveUTC(fromIso, toIso) {
+        const a = new Date(fromIso);
+        const b = new Date(toIso);
+        const ay = a.getUTCFullYear();
+        const am = a.getUTCMonth();
+        const by = b.getUTCFullYear();
+        const bm = b.getUTCMonth();
+        return (by - ay) * 12 + (bm - am) + 1;
+      }
+
       const loanDueRows = (loans || [])
         .filter(l => l.dueDay != null && Number(l.dueDay) === day)
         .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
@@ -72,6 +94,33 @@ export function DueReport() {
             ? Number(l.emiAmount)
             : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
           const dueDate = new Date(`${selectedDate}T00:00:00.000Z`).toISOString();
+          // Calculate unpaid months starting from the month AFTER loanDate
+          let multiplier = 0;
+          try {
+            if (emi != null && isFinite(emi) && l.loanDate) {
+              const paidSet = paidMonthsByLoan.get(String(l.id)) || new Set();
+              const due = new Date(dueDate);
+              const loanStart = new Date(l.loanDate);
+              const firstDueYear = loanStart.getUTCFullYear() + Math.floor((loanStart.getUTCMonth()+1)/12);
+              const firstDueMonth = (loanStart.getUTCMonth()+1) % 12;
+              const fromYear = firstDueYear;
+              const fromMonth = firstDueMonth;
+              const toYear = due.getUTCFullYear();
+              const toMonth = due.getUTCMonth();
+              const diff = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+              let missed = 0;
+              if (diff > 0) {
+                for (let i = 0; i < diff; i++) {
+                  const y = fromYear + Math.floor((fromMonth + i) / 12);
+                  const m = (fromMonth + i) % 12;
+                  const key = `${y}-${String(m+1).padStart(2,'0')}`;
+                  if (!paidSet.has(key)) missed++;
+                }
+              }
+              multiplier = missed;
+            }
+          } catch {}
+          if (multiplier <= 0) return null; // no EMI due yet in this month
           return {
             id: `loan-${l.id}-${yyyymm}`,
             loanId: l.id,
@@ -81,13 +130,16 @@ export function DueReport() {
             customerPhone: l.customerPhone || '',
             vehicleNumber: l.vehicleNumber || '',
             dueDate,
-            dueAmount: emi != null && isFinite(emi) ? Math.round(emi) : null,
+            dueAmount: emi != null && isFinite(emi) ? Math.round(emi * Math.max(1, multiplier)) : null,
+            baseEmi: emi != null && isFinite(emi) ? Math.round(emi) : null,
+            carryoverMultiplier: Math.max(1, multiplier),
             fine: 0,
             paidAmount: 0,
             paymentDate: null,
             _source: 'loan'
           };
-        });
+        })
+        .filter(Boolean);
 
       const merged = [...loanDueRows, ...withId];
       setRows(merged);
@@ -176,6 +228,7 @@ export function DueReport() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Amount</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carryover</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
@@ -187,6 +240,11 @@ export function DueReport() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.customerName || ''}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.vehicleNumber || ''}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₹{Number(r.dueAmount || 0).toLocaleString()}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                  {r._source === 'loan' && r.baseEmi != null && r.carryoverMultiplier != null
+                    ? `${r.carryoverMultiplier}× of ₹${Number(r.baseEmi).toLocaleString()}`
+                    : '—'}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   <DateInputDMY
                     name={`due-${r.id}`}

@@ -37,6 +37,7 @@ export const customersApi = {
   create: (data) => request('/customers', { method: 'POST', body: JSON.stringify(data) }),
   search: (query) => request(`/customers/search?q=${encodeURIComponent(query)}`),
   getById: (id) => request(`/customers/${id}`),
+  update: (id, data) => request(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 // Loans

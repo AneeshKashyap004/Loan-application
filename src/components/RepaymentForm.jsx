@@ -25,6 +25,7 @@ export function RepaymentForm() {
   const [customerLoans, setCustomerLoans] = useState([]);
   const [selectedLoanId, setSelectedLoanId] = useState('');
   const [isLoanClosed, setIsLoanClosed] = useState(false);
+  const [countNextMonth, setCountNextMonth] = useState(false);
   const [remainingAmount, setRemainingAmount] = useState(null);
   const [dueToday, setDueToday] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -64,32 +65,80 @@ export function RepaymentForm() {
         const end = new Date(`${duesDate}T23:59:59.999Z`).toISOString();
         const sel = new Date(duesDate);
         const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
-        const [custs, dues, loans, repsForMonth] = await Promise.all([
+        const [custs, dues, loans, repsForMonth, repsUpToSelected] = await Promise.all([
           customersApi.list(),
           repaymentsApi.listByRange(start, end),
           loansApi.list(),
           repaymentsApi.listByRange(new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString(), new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()),
+          repaymentsApi.listByRange(new Date('1970-01-01T00:00:00.000Z').toISOString(), new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()),
         ]);
         setCustomers(custs);
         const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
         const paidLoanKeys = new Set((repsForMonth || []).filter(r => r.loanId != null).map(r => `${r.loanId}:${yyyymm}`));
         const day = sel.getUTCDate();
+        // Build paid months map up to selected month end
+        const paidMonthsByLoan = new Map();
+        (repsUpToSelected || []).forEach(r => {
+          if (r.loanId == null) return;
+          const d = new Date(r.dueDate);
+          const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+          const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
+          set.add(key);
+          paidMonthsByLoan.set(String(r.loanId), set);
+        });
+      setCountNextMonth(false);
+
+        function monthsBetweenInclusiveUTC(fromIso, toIso) {
+          const a = new Date(fromIso);
+          const b = new Date(toIso);
+          return (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth()) + 1;
+        }
+
         const virtualRows = (loans || [])
           .filter(l => l.dueDay != null && Number(l.dueDay) === day)
           .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
-          .map(l => ({
-            id: `loan-${l.id}-${yyyymm}`,
-            loanId: l.id,
-            customerId: l.customerId ?? null,
-            customerName: l.customerName || '',
-            vehicleNumber: l.vehicleNumber || '',
-            dueDate: new Date(`${duesDate}T00:00:00.000Z`).toISOString(),
-            dueAmount: (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null),
-            fine: 0,
-            paidAmount: 0,
-            isPaid: 0,
-            remarks: '',
-          }));
+          .map(l => {
+            const dueDateIso = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
+            const baseEmi = (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+            let missed = 0;
+            try {
+              if (baseEmi != null && isFinite(baseEmi) && l.loanDate) {
+                const paidSet = paidMonthsByLoan.get(String(l.id)) || new Set();
+                const due = new Date(dueDateIso);
+                const loanStart = new Date(l.loanDate);
+                const firstDueYear = loanStart.getUTCFullYear() + Math.floor((loanStart.getUTCMonth()+1)/12);
+                const firstDueMonth = (loanStart.getUTCMonth()+1) % 12;
+                const fromYear = firstDueYear;
+                const fromMonth = firstDueMonth;
+                const toYear = due.getUTCFullYear();
+                const toMonth = due.getUTCMonth();
+                const diff = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+                if (diff > 0) {
+                  for (let i = 0; i < diff; i++) {
+                    const y = fromYear + Math.floor((fromMonth + i) / 12);
+                    const m = (fromMonth + i) % 12;
+                    const key = `${y}-${String(m+1).padStart(2,'0')}`;
+                    if (!paidSet.has(key)) missed++;
+                  }
+                }
+              }
+            } catch {}
+            if (missed <= 0) return null;
+            return {
+              id: `loan-${l.id}-${yyyymm}`,
+              loanId: l.id,
+              customerId: l.customerId ?? null,
+              customerName: l.customerName || '',
+              vehicleNumber: l.vehicleNumber || '',
+              dueDate: dueDateIso,
+              dueAmount: baseEmi != null && isFinite(baseEmi) ? Math.round(baseEmi * Math.max(1, missed)) : null,
+              fine: 0,
+              paidAmount: 0,
+              isPaid: 0,
+              remarks: '',
+            };
+          })
+          .filter(Boolean);
         setDueToday([...(virtualRows || []), ...unpaid]);
       } catch (e) {
         console.error('Failed to load dues/customers', e);
@@ -104,32 +153,79 @@ export function RepaymentForm() {
       const end = new Date(`${duesDate}T23:59:59.999Z`).toISOString();
       const sel = new Date(duesDate);
       const yyyymm = `${sel.getUTCFullYear()}-${String(sel.getUTCMonth()+1).padStart(2,'0')}`;
-      const [custs, dues, loans, repsForMonth] = await Promise.all([
+      const [custs, dues, loans, repsForMonth, repsUpToSelected] = await Promise.all([
         customersApi.list(),
         repaymentsApi.listByRange(start, end),
         loansApi.list(),
         repaymentsApi.listByRange(new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString(), new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()),
+        repaymentsApi.listByRange(new Date('1970-01-01T00:00:00.000Z').toISOString(), new Date(Date.UTC(sel.getUTCFullYear(), sel.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()),
       ]);
       setCustomers(custs);
       const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
       const paidLoanKeys = new Set((repsForMonth || []).filter(r => r.loanId != null).map(r => `${r.loanId}:${yyyymm}`));
       const day = sel.getUTCDate();
+      // Build paid months map up to selected month end
+      const paidMonthsByLoan = new Map();
+      (repsUpToSelected || []).forEach(r => {
+        if (r.loanId == null) return;
+        const d = new Date(r.dueDate);
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+        const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
+        set.add(key);
+        paidMonthsByLoan.set(String(r.loanId), set);
+      });
+
+      function monthsBetweenInclusiveUTC(fromIso, toIso) {
+        const a = new Date(fromIso);
+        const b = new Date(toIso);
+        return (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth()) + 1;
+      }
+
       const virtualRows = (loans || [])
         .filter(l => l.dueDay != null && Number(l.dueDay) === day)
         .filter(l => !paidLoanKeys.has(`${l.id}:${yyyymm}`))
-        .map(l => ({
-          id: `loan-${l.id}-${yyyymm}`,
-          loanId: l.id,
-          customerId: l.customerId ?? null,
-          customerName: l.customerName || '',
-          vehicleNumber: l.vehicleNumber || '',
-          dueDate: new Date(`${duesDate}T00:00:00.000Z`).toISOString(),
-          dueAmount: (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null),
-          fine: 0,
-          paidAmount: 0,
-          isPaid: 0,
-          remarks: '',
-        }));
+        .map(l => {
+          const dueDateIso = new Date(`${duesDate}T00:00:00.000Z`).toISOString();
+          const baseEmi = (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+          let missed = 0;
+          try {
+            if (baseEmi != null && isFinite(baseEmi) && l.loanDate) {
+              const paidSet = paidMonthsByLoan.get(String(l.id)) || new Set();
+              const due = new Date(dueDateIso);
+              const loanStart = new Date(l.loanDate);
+              const firstDueYear = loanStart.getUTCFullYear() + Math.floor((loanStart.getUTCMonth()+1)/12);
+              const firstDueMonth = (loanStart.getUTCMonth()+1) % 12;
+              const fromYear = firstDueYear;
+              const fromMonth = firstDueMonth;
+              const toYear = due.getUTCFullYear();
+              const toMonth = due.getUTCMonth();
+              const diff = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+              if (diff > 0) {
+                for (let i = 0; i < diff; i++) {
+                  const y = fromYear + Math.floor((fromMonth + i) / 12);
+                  const m = (fromMonth + i) % 12;
+                  const key = `${y}-${String(m+1).padStart(2,'0')}`;
+                  if (!paidSet.has(key)) missed++;
+                }
+              }
+            }
+          } catch {}
+          if (missed <= 0) return null;
+          return {
+            id: `loan-${l.id}-${yyyymm}`,
+            loanId: l.id,
+            customerId: l.customerId ?? null,
+            customerName: l.customerName || '',
+            vehicleNumber: l.vehicleNumber || '',
+            dueDate: dueDateIso,
+            dueAmount: baseEmi != null && isFinite(baseEmi) ? Math.round(baseEmi * Math.max(1, missed)) : null,
+            fine: 0,
+            paidAmount: 0,
+            isPaid: 0,
+            remarks: '',
+          };
+        })
+        .filter(Boolean);
       setDueToday([...(virtualRows || []), ...unpaid]);
     } catch (e) { console.error(e); }
   };
@@ -177,7 +273,10 @@ export function RepaymentForm() {
             .reduce((s, r) => s + (Number(r.paidAmount) || 0), 0);
           const remaining = Math.max(0, Number(loan.amount) - totalPaid);
           setRemainingAmount(remaining);
-          if (remaining <= 0) setIsLoanClosed(true);
+          if (remaining <= 0) {
+            setIsLoanClosed(true);
+            setFormData(prev => ({ ...prev, dueAmount: '0' }));
+          }
         } else {
           setRemainingAmount(null);
         }
@@ -194,7 +293,7 @@ export function RepaymentForm() {
 
     try {
       if (isLoanClosed) {
-        setMessage({ type: 'error', text: 'Selected loan is already repaid/closed.' });
+        setMessage({ type: 'success', text: 'All amount cleared for this loan.' });
         setLoading(false);
         return;
       }
@@ -222,6 +321,19 @@ export function RepaymentForm() {
         pendingNum = 0;
       }
 
+      // If user wants to count this payment toward next month, set dueDate to next month's due day
+      let dueDateToSend = new Date(formData.dueDate);
+      if (countNextMonth && selectedLoanId) {
+        const loan = (customerLoans || []).find(l => String(l.id) === String(selectedLoanId));
+        if (loan && loan.dueDay != null) {
+          const d = new Date(formData.dueDate);
+          const y = d.getUTCFullYear();
+          const m = d.getUTCMonth();
+          const next = new Date(Date.UTC(y, m + 1, Math.min(Number(loan.dueDay) || 1, 28), 0, 0, 0));
+          dueDateToSend = next;
+        }
+      }
+
       // Save to server (SQLite)
       await repaymentsApi.create({
         vehicleNumber: formData.vehicleNumber,
@@ -229,7 +341,7 @@ export function RepaymentForm() {
         customerName: formData.customerName,
         contact: formData.contact,
         loanId: selectedLoanId || null,
-        dueDate: new Date(formData.dueDate).toISOString(),
+        dueDate: dueDateToSend.toISOString(),
         dueAmount: dueNum,
         fine: fineNum,
         paidAmount: paidAmountNum,
@@ -370,6 +482,22 @@ export function RepaymentForm() {
               </label>
               <DateInputDMY name="dueDate" value={formData.dueDate} onChange={handleChange} />
             </div>
+
+            {/* Early payment handling: count toward next month's EMI */}
+            {selectedLoanId && (
+              <div className="flex items-center gap-2 pt-7">
+                <input
+                  id="countNextMonth"
+                  type="checkbox"
+                  checked={countNextMonth}
+                  onChange={(e) => setCountNextMonth(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                />
+                <label htmlFor="countNextMonth" className="text-sm text-gray-700 cursor-pointer">
+                  Count this payment toward next month's EMI
+                </label>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

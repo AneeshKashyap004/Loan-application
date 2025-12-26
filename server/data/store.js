@@ -3,7 +3,7 @@ import { ListObjectsV2Command, GetObjectCommand, PutObjectCommand } from '@aws-s
 import fs from 'fs';
 import path from 'path';
 
-const useLocal = !S3_BUCKET;
+const useLocal = !S3_BUCKET || String(process.env.S3_FORCE_LOCAL || '') === '1';
 
 // Local filesystem base directory for JSON documents and counters
 const localBaseDir = path.resolve(process.cwd(), 'server', 'local-store');
@@ -54,18 +54,31 @@ export async function listCollection(prefix) {
     }
     return items;
   }
-  let ContinuationToken = undefined;
-  const items = [];
-  do {
-    const out = await s3.send(new ListObjectsV2Command({ Bucket: S3_BUCKET, Prefix: prefix + '/', ContinuationToken }));
-    for (const o of (out.Contents || [])) {
-      if (!o.Key.endsWith('.json')) continue;
-      const doc = await readJson(o.Key);
+  try {
+    let ContinuationToken = undefined;
+    const items = [];
+    do {
+      const out = await s3.send(new ListObjectsV2Command({ Bucket: S3_BUCKET, Prefix: prefix + '/', ContinuationToken }));
+      for (const o of (out.Contents || [])) {
+        if (!o.Key.endsWith('.json')) continue;
+        const doc = await readJson(o.Key);
+        if (doc) items.push(doc);
+      }
+      ContinuationToken = out.IsTruncated ? out.NextContinuationToken : undefined;
+    } while (ContinuationToken);
+    return items;
+  } catch (e) {
+    // Fallback to local if S3 listing fails
+    const dir = path.join(localBaseDir, prefix);
+    ensureDirSync(dir);
+    const items = [];
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith('.json')) continue;
+      const doc = await readJson(path.join(prefix, name));
       if (doc) items.push(doc);
     }
-    ContinuationToken = out.IsTruncated ? out.NextContinuationToken : undefined;
-  } while (ContinuationToken);
-  return items;
+    return items;
+  }
 }
 
 export async function getItem(prefix, id) {

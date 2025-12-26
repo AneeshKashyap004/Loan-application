@@ -11,8 +11,11 @@ export function Reports() {
   const [customer, setCustomer] = useState(null);
   const [loans, setLoans] = useState([]);
   const [repayments, setRepayments] = useState([]);
+  const [repaymentsAllForOutstanding, setRepaymentsAllForOutstanding] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const handleFetch = async () => {
     const id = customerIdInput.trim();
@@ -26,8 +29,24 @@ export function Reports() {
       const cust = await customersApi.getById(id);
       setCustomer(cust);
       const resolvedId = cust?.autoNumber || id;
-      let [custLoans, custReps] = await Promise.all([
+      let [custLoans, custReps, repsAllForOutstanding] = await Promise.all([
         loansApi.listByCustomer(resolvedId),
+        (async () => {
+          // If a date range is selected, query that range and filter to this customer
+          if (startDate && endDate) {
+            const allInRange = await repaymentsApi.listByRange(new Date(`${startDate}T00:00:00.000Z`).toISOString(), new Date(`${endDate}T23:59:59.999Z`).toISOString());
+            const vehCandidate = (cust?.vehicleNumber || id.replace(/^(EMI|INP)/i, '')).toUpperCase();
+            return (allInRange || []).filter(r =>
+              String(r.customerId) === String(cust?.id) ||
+              String(r.customerId) === String(cust?.autoNumber) ||
+              String(r.autoNumber || '') === String(cust?.autoNumber || '') ||
+              String(r.vehicleNumber || '').toUpperCase() === vehCandidate ||
+              (r.loanId != null && (custLoans || []).some(l => String(l.id) === String(r.loanId)))
+            );
+          }
+          // Default behavior: load all for this customer
+          return repaymentsApi.listByCustomer(resolvedId);
+        })(),
         repaymentsApi.listByCustomer(resolvedId),
       ]);
 
@@ -47,6 +66,7 @@ export function Reports() {
 
       setLoans(custLoans || []);
       setRepayments(custReps || []);
+      setRepaymentsAllForOutstanding(repsAllForOutstanding || []);
       if ((custLoans?.length || 0) === 0 && (custReps?.length || 0) === 0) {
         setMessage({ type: 'info', text: 'No data found for this customer.' });
       }
@@ -69,11 +89,11 @@ export function Reports() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Customer Report</h1>
-        <p className="text-gray-500 mt-1">Enter Customer ID </p>
+        <p className="text-gray-500 mt-1">Enter Customer ID. Optionally filter repayments by date range.</p>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border p-6 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">Customer ID</label>
             <Input
@@ -82,6 +102,14 @@ export function Reports() {
               onChange={(e) => setCustomerIdInput(e.target.value)}
               placeholder="e.g. EMIKA01AB1234 or CUST00012"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
           <div>
             <Button onClick={handleFetch} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700">
@@ -132,21 +160,29 @@ export function Reports() {
                       <th className="px-3 py-2 text-left">Loan Date</th>
                       <th className="px-3 py-2 text-left">HOA</th>
                       <th className="px-3 py-2 text-left">EMI Due Day</th>
+                      <th className="px-3 py-2 text-left">Outstanding</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {loans.map(l => (
-                      <tr key={l.id} className="border-t">
-                        <td className="px-3 py-2">{l.vehicleNumber}</td>
-                        <td className="px-3 py-2">{l.amount}</td>
-                        <td className="px-3 py-2">{l.tenure}</td>
-                        <td className="px-3 py-2">{formatDateDMY(l.loanDate)}</td>
-                        <td className="px-3 py-2">{l.hoa || '-'}</td>
-                        <td className="px-3 py-2">{l.dueDay ?? '-'}</td>
-                      </tr>
-                    ))}
+                    {loans.map(l => {
+                      const totalPaid = (repaymentsAllForOutstanding || [])
+                        .filter(r => String(r.loanId || '') === String(l.id))
+                        .reduce((s, r) => s + (Number(r.paidAmount) || 0), 0);
+                      const outstanding = Math.max(0, Number(l.amount || 0) - totalPaid);
+                      return (
+                        <tr key={l.id} className="border-t">
+                          <td className="px-3 py-2">{l.vehicleNumber}</td>
+                          <td className="px-3 py-2">{l.amount}</td>
+                          <td className="px-3 py-2">{l.tenure}</td>
+                          <td className="px-3 py-2">{formatDateDMY(l.loanDate)}</td>
+                          <td className="px-3 py-2">{l.hoa || '-'}</td>
+                          <td className="px-3 py-2">{l.dueDay ?? '-'}</td>
+                          <td className="px-3 py-2">₹{Number(outstanding).toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
                     {loans.length === 0 && (
-                      <tr><td className="px-3 py-3 text-gray-500" colSpan={5}>No loans</td></tr>
+                      <tr><td className="px-3 py-3 text-gray-500" colSpan={7}>No loans</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -165,6 +201,7 @@ export function Reports() {
                       <th className="px-3 py-2 text-left">Paid</th>
                       <th className="px-3 py-2 text-left">Pending</th>
                       <th className="px-3 py-2 text-left">Status</th>
+                      <th className="px-3 py-2 text-left">Remarks</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -176,10 +213,11 @@ export function Reports() {
                         <td className="px-3 py-2">{r.paidAmount}</td>
                         <td className="px-3 py-2">{r.pendingAmount}</td>
                         <td className="px-3 py-2">{r.isPaid ? 'Paid' : 'Unpaid'}</td>
+                        <td className="px-3 py-2 whitespace-pre-wrap text-xs text-gray-700">{r.remarks || ''}</td>
                       </tr>
                     ))}
                     {repayments.length === 0 && (
-                      <tr><td className="px-3 py-3 text-gray-500" colSpan={6}>No repayments</td></tr>
+                      <tr><td className="px-3 py-3 text-gray-500" colSpan={7}>No repayments</td></tr>
                     )}
                   </tbody>
                 </table>

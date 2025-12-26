@@ -21,6 +21,7 @@
     "date-fns": "^2.30.0",
     "dexie": "^3.2.4",
     "dexie-react-hooks": "^1.1.7",
+    "dotenv": "^17.2.3",
     "express": "^4.19.2",
     "lucide-react": "^0.294.0",
     "morgan": "^1.10.0",

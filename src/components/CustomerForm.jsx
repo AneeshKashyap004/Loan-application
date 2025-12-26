@@ -21,6 +21,7 @@ export function CustomerForm() {
   const [paidTotals, setPaidTotals] = useState(new Map());
   const [loanCodes, setLoanCodes] = useState(new Map());
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const loadCustomers = async () => {
     try {
@@ -116,27 +117,40 @@ export function CustomerForm() {
         setLoading(false);
         return;
       }
-      // Customer ID rule: first 3 letters of name + last 4 digits of phone
-      const namePart = String(formData.name).replace(/\s+/g, '').toUpperCase().slice(0, 3);
-      const phoneDigits = String(formData.phone).replace(/\D/g, '');
-      const phonePart = phoneDigits.slice(-4);
-      const autoNumber = `${namePart}${phonePart}`;
       const normalizedVeh = String(formData.vehicleNumber).replace(/\s+/g, '').toUpperCase();
-
-      await customersApi.create({
-        name: formData.name,
-        phone: formData.phone,
-        dealer: formData.dealer,
-        loanAmount: 0,
-        documentVerified: formData.documentVerified,
-        vehicleNumber: normalizedVeh,
-        autoNumber,
-      });
-
-      setMessage({ type: 'success', text: `Customer added successfully! Auto Number: ${autoNumber}` });
-      await loadCustomers();
-      setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' });
-      setShowForm(false);
+      if (editing) {
+        await customersApi.update(String(editing.id), {
+          name: formData.name,
+          phone: formData.phone,
+          dealer: formData.dealer,
+          documentVerified: formData.documentVerified,
+          vehicleNumber: normalizedVeh,
+          autoNumber: formData.autoNumber,
+        });
+        setMessage({ type: 'success', text: 'Customer updated successfully!' });
+        await loadCustomers();
+        setEditing(null);
+        setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' });
+        setShowForm(false);
+      } else {
+        const namePart = String(formData.name).replace(/\s+/g, '').toUpperCase().slice(0, 3);
+        const phoneDigits = String(formData.phone).replace(/\D/g, '');
+        const phonePart = phoneDigits.slice(-4);
+        const autoNumber = `${namePart}${phonePart}`;
+        await customersApi.create({
+          name: formData.name,
+          phone: formData.phone,
+          dealer: formData.dealer,
+          loanAmount: 0,
+          documentVerified: formData.documentVerified,
+          vehicleNumber: normalizedVeh,
+          autoNumber,
+        });
+        setMessage({ type: 'success', text: `Customer added successfully! Auto Number: ${autoNumber}` });
+        await loadCustomers();
+        setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' });
+        setShowForm(false);
+      }
     } catch (error) {
       console.error('Error saving customer:', error);
       setMessage({ type: 'error', text: 'Failed to save customer. Please try again.' });
@@ -173,6 +187,12 @@ export function CustomerForm() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {editing && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer ID</label>
+                  <Input name="autoNumber" value={formData.autoNumber || ''} onChange={handleChange} placeholder="e.g., ABC1234" />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
                 <Input name="name" value={formData.name} onChange={handleChange} placeholder="Enter customer name" required />
@@ -196,7 +216,12 @@ export function CustomerForm() {
               <label htmlFor="documentVerified" className="text-sm font-medium text-gray-700 cursor-pointer">Documents Verified</label>
             </div>
 
-            <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">{loading ? 'Saving...' : 'Add Customer'}</Button>
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">{loading ? 'Saving...' : (editing ? 'Save Changes' : 'Add Customer')}</Button>
+              {editing && (
+                <Button type="button" variant="outline" onClick={() => { setEditing(null); setFormData({ name: '', phone: '', dealer: '', documentVerified: false, vehicleNumber: '' }); setShowForm(false); }}>Cancel</Button>
+              )}
+            </div>
           </form>
         </div>
       )}
@@ -218,11 +243,12 @@ export function CustomerForm() {
                 <th className="py-2 pr-4">Loan ID</th>
                 <th className="py-2 pr-4">Docs</th>
                 <th className="py-2 pr-4">Created</th>
+                <th className="py-2 pr-4">Actions</th>
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 ? (
-                <tr><td colSpan="8" className="py-4 text-gray-500">No customers found.</td></tr>
+                <tr><td colSpan="9" className="py-4 text-gray-500">No customers found.</td></tr>
               ) : (
                 customers.map(c => (
                   <tr key={c.id} className="border-t">
@@ -234,6 +260,23 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{(loanCodes.get(c.autoNumber) || []).join(', ') || '—'}</td>
                     <td className="py-2 pr-4">{c.docs ? (<a href={toAbsoluteFileUrl(c.docs)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>) : '—'}</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
+                    <td className="py-2 pr-4">
+                      <button
+                        className="text-blue-600 hover:underline"
+                        onClick={() => {
+                          setEditing(c);
+                          setShowForm(true);
+                          setFormData({
+                            name: c.name || '',
+                            phone: c.phone || '',
+                            dealer: c.dealer || '',
+                            documentVerified: !!Number(c.documentVerified),
+                            vehicleNumber: c.vehicleNumber || '',
+                            autoNumber: c.autoNumber || '',
+                          });
+                        }}
+                      >Edit</button>
+                    </td>
                   </tr>
                 ))
               )}
