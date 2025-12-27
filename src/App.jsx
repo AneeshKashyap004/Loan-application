@@ -99,7 +99,7 @@ function Layout({ children }) {
         {/* Top bar */}
         <div className="sticky top-0 z-10 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b">
           <div className="px-8 py-4">
-            <h2 className="text-lg font-semibold text-gray-800">Loan Management Portal</h2>
+            <h2 className="text-lg font-semibold text-gray-800">Deepak Bank LoanPortal</h2>
           </div>
         </div>
         {/* Page container */}
