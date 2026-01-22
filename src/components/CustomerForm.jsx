@@ -20,6 +20,7 @@ export function CustomerForm() {
   const [loanTotals, setLoanTotals] = useState(new Map());
   const [paidTotals, setPaidTotals] = useState(new Map());
   const [loanCodes, setLoanCodes] = useState(new Map());
+  const [docsByAuto, setDocsByAuto] = useState(new Map());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -45,6 +46,7 @@ export function CustomerForm() {
       // Aggregate loan totals per autoNumber with fallbacks (autoNumber, numeric id, vehicleNumber)
       const totals = new Map();
       const codes = new Map();
+      const docsMap = new Map(); // autoNumber -> latest loan docs (by loanDate or id)
       (loans || []).forEach(l => {
         const amount = Number(l.amount) || 0;
         const veh = String(l.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
@@ -67,10 +69,21 @@ export function CustomerForm() {
           const code = l.loanCode || '';
           if (code && !arr.includes(code)) arr.push(code);
           codes.set(auto, arr);
+
+          // Track latest docs per auto based on loanDate (fallback to id)
+          if (l.docs) {
+            const prev = docsMap.get(auto);
+            const prevDate = prev?.loanDate ? new Date(prev.loanDate).getTime() : -Infinity;
+            const currDate = l.loanDate ? new Date(l.loanDate).getTime() : -Infinity;
+            if (prev == null || currDate > prevDate || (currDate === prevDate && Number(l.id || 0) > Number(prev.id || 0))) {
+              docsMap.set(auto, { id: l.id, loanDate: l.loanDate, docs: l.docs });
+            }
+          }
         }
       });
       setLoanTotals(totals);
       setLoanCodes(codes);
+      setDocsByAuto(new Map(Array.from(docsMap.entries()).map(([k, v]) => [k, v.docs])));
 
       // Aggregate repayments (paid) per autoNumber
       const paid = new Map();
@@ -286,7 +299,7 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.dealer}</td>
                     <td className="py-2 pr-4">₹{Math.max(0, Number(loanTotals.get(c.autoNumber) || 0) - Number(paidTotals.get(c.autoNumber) || 0)).toLocaleString()}</td>
                     <td className="py-2 pr-4">{(loanCodes.get(c.autoNumber) || []).join(', ') || '—'}</td>
-                    <td className="py-2 pr-4">{c.docs ? (<a href={toAbsoluteFileUrl(c.docs)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>) : '—'}</td>
+                    <td className="py-2 pr-4">{docsByAuto.get(c.autoNumber) ? (<a href={toAbsoluteFileUrl(docsByAuto.get(c.autoNumber))} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>) : '—'}</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                     <td className="py-2 pr-4">
                       <button
