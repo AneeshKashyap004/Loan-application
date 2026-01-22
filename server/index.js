@@ -262,7 +262,11 @@ app.get('/api/repayments/due-today', async (req, res) => {
   const end = new Date(today.getTime() + 86400000).toISOString();
 
   const rows = await listCollection('repayments');
-  const due = rows.filter(r => r.dueDate >= start && r.dueDate < end && Number(r.isPaid) === 0);
+  const due = rows.filter(r => {
+    const inRange = r.dueDate >= start && r.dueDate < end;
+    const unpaid = (r.isPaid == null) || Number(r.isPaid) === 0;
+    return inRange && unpaid;
+  });
   res.json(due);
 });
 

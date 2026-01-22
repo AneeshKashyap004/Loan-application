@@ -68,6 +68,10 @@ export function CustomerForm() {
           const arr = codes.get(auto) || [];
           const code = l.loanCode || '';
           if (code && !arr.includes(code)) arr.push(code);
+          if (!code) {
+            const idStr = String(l.id ?? '').trim();
+            if (idStr && !arr.includes(idStr)) arr.push(idStr);
+          }
           codes.set(auto, arr);
 
           // Track latest docs per auto based on loanDate (fallback to id)
