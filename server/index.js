@@ -277,26 +277,6 @@ app.post('/api/repayments', async (req, res) => {
   }
 });
 
-app.put('/api/repayments/:id', async (req, res) => {
-  try {
-    const id = String(req.params.id);
-    const existing = await getItem('repayments', id);
-    if (!existing) return res.status(404).json({ error: 'Repayment not found' });
-
-    const payload = req.body || {};
-    const allowed = ['dueDate', 'remarks', 'paidAmount', 'isPaid'];
-    const updates = {};
-    for (const k of allowed) if (payload[k] != null) updates[k] = payload[k];
-    if (!Object.keys(updates).length)
-      return res.status(400).json({ error: 'No valid fields to update' });
-
-    const updated = await updateItem('repayments', id, updates);
-    res.json(updated);
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to update repayment' });
-  }
-});
-
 /* =========================
    HEALTH
    ========================= */
