@@ -68,6 +68,10 @@ export function LoanApplicationForm() {
         return;
       }
 
+      const normVeh = String(formData.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
+      const typePrefix = String(formData.loanType || 'EMI').slice(0,3).toUpperCase();
+      const autoLoanCode = `${typePrefix}${normVeh}`;
+
       const created = await loansApi.create({
         vehicleNumber: formData.vehicleNumber,
         customerId: formData.customerId,
@@ -80,6 +84,7 @@ export function LoanApplicationForm() {
         loanDate: new Date(formData.loanDate).toISOString(),
         dueDay: dueDayNum,
         hoa: formData.hoa,
+        loanCode: autoLoanCode,
         loanType: formData.loanType,
         paymentMode: formData.paymentMode,
         remarks: formData.remarks,

@@ -53,18 +53,123 @@ export function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const [customers, loans, repayments, dueToday] = await Promise.all([
+      // Build time ranges for "today" in UTC window
+      const today = new Date();
+      const yyyy = today.getUTCFullYear();
+      const mm = String(today.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(today.getUTCDate()).padStart(2, '0');
+      const yyyymm = `${yyyy}-${mm}`;
+      const startIso = new Date(`${yyyy}-${mm}-${dd}T00:00:00.000Z`).toISOString();
+      const endIso = new Date(`${yyyy}-${mm}-${dd}T23:59:59.999Z`).toISOString();
+
+      const [customers, loans, repayments, duesTodayActual, repsForMonth, repsUpToSelected] = await Promise.all([
         customersApi.list(),
         loansApi.list(),
         repaymentsApi.list(),
-        repaymentsApi.dueToday(),
+        repaymentsApi.listByRange(startIso, endIso),
+        // month window
+        repaymentsApi.listByRange(
+          new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0)).toISOString(),
+          new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()
+        ),
+        // everything up to end of current month (for missed count)
+        repaymentsApi.listByRange(
+          new Date('1970-01-01T00:00:00.000Z').toISOString(),
+          new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0, 23, 59, 59, 999)).toISOString()
+        ),
       ]);
-      
+
+      // Synthesize virtual dues similar to RepaymentForm
+      const unpaidToday = (duesTodayActual || []).filter(d => Number(d.isPaid) === 0);
+
+      const paidSumByLoanForMonth = new Map();
+      (repsForMonth || []).forEach(r => {
+        if (r.loanId == null) return;
+        const key = String(r.loanId);
+        paidSumByLoanForMonth.set(key, (paidSumByLoanForMonth.get(key) || 0) + (Number(r.paidAmount) || 0));
+      });
+
+      const paidMonthsByLoan = new Map();
+      const totalPaidByLoan = new Map();
+      (repsUpToSelected || []).forEach(r => {
+        if (r.loanId == null) return;
+        const d = new Date(r.dueDate);
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        const set = paidMonthsByLoan.get(String(r.loanId)) || new Set();
+        set.add(key);
+        paidMonthsByLoan.set(String(r.loanId), set);
+        totalPaidByLoan.set(String(r.loanId), (totalPaidByLoan.get(String(r.loanId)) || 0) + (Number(r.paidAmount) || 0));
+      });
+
+      const day = today.getUTCDate();
+      const virtualRows = (loans || [])
+        .filter(l => l.dueDay != null && Number(l.dueDay) === day)
+        // Exclude loans that are closed or fully settled up to this month end
+        .filter(l => {
+          if (String(l.status || '').toLowerCase() === 'closed') return false;
+          const totalPaid = totalPaidByLoan.get(String(l.id)) || 0;
+          if (l.amount != null && Number(totalPaid) >= Number(l.amount)) return false;
+          return true;
+        })
+        .filter(l => {
+          const baseEmi = (l.emiAmount != null && l.emiAmount !== '')
+            ? Number(l.emiAmount)
+            : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+          const sumPaid = paidSumByLoanForMonth.get(String(l.id)) || 0;
+          return !(baseEmi != null && isFinite(baseEmi) && sumPaid >= baseEmi);
+        })
+        .map(l => {
+          const dueDateIso = startIso;
+          const baseEmi = (l.emiAmount != null && l.emiAmount !== '') ? Number(l.emiAmount) : (l.amount && l.tenure ? Number(l.amount) / Number(l.tenure || 1) : null);
+          let missed = 0;
+          try {
+            if (baseEmi != null && isFinite(baseEmi) && l.loanDate) {
+              const paidSet = paidMonthsByLoan.get(String(l.id)) || new Set();
+              const due = new Date(dueDateIso);
+              const loanStart = new Date(l.loanDate);
+              const firstDueYear = loanStart.getUTCFullYear() + Math.floor((loanStart.getUTCMonth() + 1) / 12);
+              const firstDueMonth = (loanStart.getUTCMonth() + 1) % 12;
+              const fromYear = firstDueYear;
+              const fromMonth = firstDueMonth;
+              const toYear = due.getUTCFullYear();
+              const toMonth = due.getUTCMonth();
+              const diff = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+              if (diff > 0) {
+                for (let i = 0; i < diff; i++) {
+                  const y = fromYear + Math.floor((fromMonth + i) / 12);
+                  const m = (fromMonth + i) % 12;
+                  const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+                  if (!paidSet.has(key)) missed++;
+                }
+              }
+            }
+          } catch {}
+          return {
+            id: `loan-${l.id}-${yyyymm}`,
+            loanId: l.id,
+            customerId: l.customerId ?? null,
+            customerName: l.customerName || '',
+            vehicleNumber: l.vehicleNumber || '',
+            dueDate: dueDateIso,
+            dueAmount: baseEmi != null && isFinite(baseEmi) ? Math.round(baseEmi * Math.max(1, missed)) : null,
+            fine: 0,
+            paidAmount: 0,
+            isPaid: 0,
+            remarks: '',
+          };
+        })
+        .filter(Boolean);
+
+      const dueToday = [
+        ...(virtualRows || []),
+        ...unpaidToday,
+      ];
+
       // Total disbursed = sum of loan amounts
       const totalDisbursed = (loans || []).reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
 
       setAllData({ customers, loans, repayments, dueToday });
-      
+
       setStats({
         totalCustomers: customers.length,
         totalLoans: loans.length,

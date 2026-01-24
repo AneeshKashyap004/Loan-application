@@ -317,13 +317,25 @@ app.post('/api/uploads', async (req, res) => {
 
   try {
     const safeName = String(filename).replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const key = `uploads/${Date.now()}_${safeName}`;
+    const relKey = `uploads/${Date.now()}_${safeName}`;
     const match = String(data).match(/^data:([^;]+);base64,/);
     const contentType = match ? match[1] : 'application/octet-stream';
 
-    await putBase64Object(key, data, contentType);
-    const signedUrl = await getSignedUrl(key, 3600);
-    res.json({ url: signedUrl, key });
+    // Try S3 first; if not configured, save to local uploads dir.
+    try {
+      await putBase64Object(relKey, data, contentType);
+      const signedUrl = await getSignedUrl(relKey, 3600);
+      console.log(`[uploads] Stored in S3: key=${relKey} contentType=${contentType}`);
+      return res.json({ url: signedUrl, key: relKey });
+    } catch (e) {
+      // Local fallback
+      const buffer = Buffer.from(String(data).replace(/^data:[^;]+;base64,/, ''), 'base64');
+      const absPath = path.join(uploadsDir, path.basename(relKey));
+      await fs.promises.writeFile(absPath, buffer);
+      const url = `/uploads/${path.basename(absPath)}`;
+      console.warn(`[uploads] S3 unavailable. Stored locally at ${absPath}`);
+      return res.json({ url, key: `uploads/${path.basename(absPath)}` });
+    }
   } catch {
     res.status(500).json({ error: 'Failed to save file' });
   }
@@ -334,6 +346,12 @@ app.get('/api/uploads/signed', async (req, res) => {
     const key = String(req.query.key || '');
     if (!key) return res.status(400).json({ error: 'key required' });
     const url = await getSignedUrl(key, 3600);
+    // If S3 is not configured, getSignedUrl may return the key (e.g., 'uploads/123_file.pdf').
+    // In that case, redirect to the local static uploads path with a leading slash.
+    if (!/^https?:\/\//i.test(url)) {
+      const target = url.startsWith('/') ? url : `/${url}`;
+      return res.redirect(302, target);
+    }
     res.redirect(302, url);
   } catch {
     res.status(404).json({ error: 'Could not sign URL' });

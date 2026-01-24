@@ -28,6 +28,7 @@ export function RepaymentForm() {
   const [countNextMonth, setCountNextMonth] = useState(false);
   const [remainingAmount, setRemainingAmount] = useState(null);
   const [dueToday, setDueToday] = useState([]);
+  const [duesMode, setDuesMode] = useState('dueDay');
   const [customers, setCustomers] = useState([]);
   const [promisedEditing, setPromisedEditing] = useState({});
   const [promisedSaving, setPromisedSaving] = useState({});
@@ -145,7 +146,6 @@ export function RepaymentForm() {
                 }
               }
             } catch {}
-            if (missed <= 0) return null;
             return {
               id: `loan-${l.id}-${yyyymm}`,
               loanId: l.id,
@@ -161,13 +161,14 @@ export function RepaymentForm() {
             };
           })
           .filter(Boolean);
-        setDueToday([...(virtualRows || []), ...unpaid]);
+        const rows = duesMode === 'actual' ? unpaid : ([...(virtualRows || []), ...unpaid]);
+        setDueToday(rows);
       } catch (e) {
         console.error('Failed to load dues/customers', e);
       }
     };
     loadDueAndCustomers();
-  }, [duesDate]);
+  }, [duesDate, duesMode]);
 
   const reloadDueToday = async () => {
     try {
@@ -270,7 +271,8 @@ export function RepaymentForm() {
           };
         })
         .filter(Boolean);
-      setDueToday([...(virtualRows || []), ...unpaid]);
+      const rows = duesMode === 'actual' ? unpaid : ([...(virtualRows || []), ...unpaid]);
+      setDueToday(rows);
     } catch (e) { console.error(e); }
   };
 
@@ -632,7 +634,18 @@ export function RepaymentForm() {
             </div>
             <h2 className="text-lg font-semibold text-gray-900 pb-1">Dues</h2>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700">View</label>
+              <select
+                value={duesMode}
+                onChange={(e) => setDuesMode(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-background px-2 text-sm"
+              >
+                <option value="dueDay">Due by dueDay</option>
+                <option value="actual">Actual repayment entries only</option>
+              </select>
+            </div>
             <button onClick={() => {
               try {
                 const headers = ['Customer ID','Customer','Vehicle','Due Amount','Due Date','Remark'];

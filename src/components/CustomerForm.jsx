@@ -66,7 +66,10 @@ export function CustomerForm() {
         if (auto) {
           totals.set(auto, (totals.get(auto) || 0) + amount);
           const arr = codes.get(auto) || [];
-          const code = l.loanCode || '';
+          const derivedCode = (l.loanCode && String(l.loanCode).trim())
+            ? String(l.loanCode).trim()
+            : `${String(l.loanType || 'EMI').slice(0,3).toUpperCase()}${veh || ''}`;
+          const code = derivedCode || '';
           if (code && !arr.includes(code)) arr.push(code);
           if (!code) {
             const idStr = String(l.id ?? '').trim();
@@ -303,7 +306,14 @@ export function CustomerForm() {
                     <td className="py-2 pr-4">{c.dealer}</td>
                     <td className="py-2 pr-4">₹{Math.max(0, Number(loanTotals.get(c.autoNumber) || 0) - Number(paidTotals.get(c.autoNumber) || 0)).toLocaleString()}</td>
                     <td className="py-2 pr-4">{(loanCodes.get(c.autoNumber) || []).join(', ') || '—'}</td>
-                    <td className="py-2 pr-4">{docsByAuto.get(c.autoNumber) ? (<a href={toAbsoluteFileUrl(docsByAuto.get(c.autoNumber))} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>) : '—'}</td>
+                    <td className="py-2 pr-4">{
+                      (() => {
+                        const docHref = docsByAuto.get(c.autoNumber) || c.docUrl || c.docs || '';
+                        return docHref
+                          ? (<a href={toAbsoluteFileUrl(docHref)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Docs</a>)
+                          : '—';
+                      })()
+                    }</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                     <td className="py-2 pr-4">
                       <button
