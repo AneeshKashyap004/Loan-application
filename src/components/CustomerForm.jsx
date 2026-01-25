@@ -21,6 +21,7 @@ export function CustomerForm() {
   const [paidTotals, setPaidTotals] = useState(new Map());
   const [loanCodes, setLoanCodes] = useState(new Map());
   const [docsByAuto, setDocsByAuto] = useState(new Map());
+  const [remarksByAuto, setRemarksByAuto] = useState(new Map());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -47,6 +48,7 @@ export function CustomerForm() {
       const totals = new Map();
       const codes = new Map();
       const docsMap = new Map(); // autoNumber -> latest loan docs (by loanDate or id)
+      const remarksMap = new Map(); // autoNumber -> latest loan remarks
       (loans || []).forEach(l => {
         const amount = Number(l.amount) || 0;
         const veh = String(l.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
@@ -86,11 +88,21 @@ export function CustomerForm() {
               docsMap.set(auto, { id: l.id, loanDate: l.loanDate, docs: l.docs });
             }
           }
+          // Track latest remarks per auto using same latest loan logic
+          {
+            const prev = remarksMap.get(auto);
+            const prevDate = prev?.loanDate ? new Date(prev.loanDate).getTime() : -Infinity;
+            const currDate = l.loanDate ? new Date(l.loanDate).getTime() : -Infinity;
+            if (prev == null || currDate > prevDate || (currDate === prevDate && Number(l.id || 0) > Number(prev.id || 0))) {
+              remarksMap.set(auto, { id: l.id, loanDate: l.loanDate, remarks: l.remarks || '' });
+            }
+          }
         }
       });
       setLoanTotals(totals);
       setLoanCodes(codes);
       setDocsByAuto(new Map(Array.from(docsMap.entries()).map(([k, v]) => [k, v.docs])));
+      setRemarksByAuto(new Map(Array.from(remarksMap.entries()).map(([k, v]) => [k, v.remarks])));
 
       // Aggregate repayments (paid) per autoNumber
       const paid = new Map();
@@ -290,6 +302,7 @@ export function CustomerForm() {
                 <th className="py-2 pr-4">Balance</th>
                 <th className="py-2 pr-4">Loan ID</th>
                 <th className="py-2 pr-4">Docs</th>
+                <th className="py-2 pr-4">Remarks</th>
                 <th className="py-2 pr-4">Created</th>
                 <th className="py-2 pr-4">Actions</th>
               </tr>
@@ -314,6 +327,7 @@ export function CustomerForm() {
                           : '—';
                       })()
                     }</td>
+                    <td className="py-2 pr-4 whitespace-pre-wrap text-xs text-gray-700">{remarksByAuto.get(c.autoNumber) || '—'}</td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                     <td className="py-2 pr-4">
                       <button

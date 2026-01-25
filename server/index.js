@@ -120,6 +120,7 @@ app.post('/api/customers', async (req, res) => {
     vehicleNumber: vehicleNumber ?? null,
     customerType: null,
     documentVerified: documentVerified ? 1 : 0,
+    remarks: req.body?.remarks || '',
     createdAt: nowIso(),
   };
 
@@ -139,7 +140,7 @@ app.put('/api/customers/:id', async (req, res) => {
 
     if (!target) return res.status(404).json({ error: 'Customer not found' });
 
-    const allowed = ['name', 'phone', 'dealer', 'vehicleNumber', 'documentVerified', 'autoNumber'];
+    const allowed = ['name', 'phone', 'dealer', 'vehicleNumber', 'documentVerified', 'autoNumber', 'remarks'];
     const payload = req.body || {};
     const updates = {};
 

@@ -133,6 +133,20 @@ export function Reports() {
               <div className="text-sm text-gray-500">Customer</div>
               <div className="text-lg font-semibold">{customer.name} <span className="text-gray-500 font-normal">({customer.autoNumber})</span></div>
               <div className="text-sm text-gray-600">{customer.phone}{customer.dealer ? ` · Dealer: ${customer.dealer}` : ''}</div>
+              {(() => {
+                try {
+                  const arr = loans || [];
+                  let pick = null;
+                  for (const l of arr) {
+                    if (!pick) { pick = l; continue; }
+                    const pd = pick?.loanDate ? new Date(pick.loanDate).getTime() : -Infinity;
+                    const cd = l?.loanDate ? new Date(l.loanDate).getTime() : -Infinity;
+                    if (cd > pd || (cd === pd && Number(l.id || 0) > Number(pick.id || 0))) pick = l;
+                  }
+                  const txt = pick?.remarks;
+                  return txt ? (<div className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{txt}</div>) : null;
+                } catch { return null; }
+              })()}
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => exportLoanApplicationsToCSV(loans)}>
@@ -161,6 +175,7 @@ export function Reports() {
                       <th className="px-3 py-2 text-left">HOA</th>
                       <th className="px-3 py-2 text-left">EMI Due Day</th>
                       <th className="px-3 py-2 text-left">Outstanding</th>
+                      <th className="px-3 py-2 text-left">Remarks</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -178,11 +193,12 @@ export function Reports() {
                           <td className="px-3 py-2">{l.hoa || '-'}</td>
                           <td className="px-3 py-2">{l.dueDay ?? '-'}</td>
                           <td className="px-3 py-2">₹{Number(outstanding).toLocaleString()}</td>
+                          <td className="px-3 py-2 whitespace-pre-wrap text-xs text-gray-700">{l.remarks || ''}</td>
                         </tr>
                       );
                     })}
                     {loans.length === 0 && (
-                      <tr><td className="px-3 py-3 text-gray-500" colSpan={7}>No loans</td></tr>
+                      <tr><td className="px-3 py-3 text-gray-500" colSpan={8}>No loans</td></tr>
                     )}
                   </tbody>
                 </table>
