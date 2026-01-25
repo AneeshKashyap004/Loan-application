@@ -3,7 +3,7 @@ import { formatDateDMY } from '@/utils/date';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { Alert, AlertDescription, AlertTitle } from './ui/Alert';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Pencil } from 'lucide-react';
 import { customersApi, loansApi, repaymentsApi, toAbsoluteFileUrl } from '@/api/client';
 
 export function CustomerForm() {
@@ -22,6 +22,9 @@ export function CustomerForm() {
   const [loanCodes, setLoanCodes] = useState(new Map());
   const [docsByAuto, setDocsByAuto] = useState(new Map());
   const [remarksByAuto, setRemarksByAuto] = useState(new Map());
+  const [latestLoanIdByAuto, setLatestLoanIdByAuto] = useState(new Map());
+  const [remarkEditDraft, setRemarkEditDraft] = useState({});
+  const [remarkEditSaving, setRemarkEditSaving] = useState({});
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -49,6 +52,7 @@ export function CustomerForm() {
       const codes = new Map();
       const docsMap = new Map(); // autoNumber -> latest loan docs (by loanDate or id)
       const remarksMap = new Map(); // autoNumber -> latest loan remarks
+      const latestLoanIdMap = new Map(); // autoNumber -> latest loan id
       (loans || []).forEach(l => {
         const amount = Number(l.amount) || 0;
         const veh = String(l.vehicleNumber || '').replace(/\s+/g, '').toUpperCase();
@@ -95,6 +99,7 @@ export function CustomerForm() {
             const currDate = l.loanDate ? new Date(l.loanDate).getTime() : -Infinity;
             if (prev == null || currDate > prevDate || (currDate === prevDate && Number(l.id || 0) > Number(prev.id || 0))) {
               remarksMap.set(auto, { id: l.id, loanDate: l.loanDate, remarks: l.remarks || '' });
+              latestLoanIdMap.set(auto, l.id);
             }
           }
         }
@@ -103,6 +108,7 @@ export function CustomerForm() {
       setLoanCodes(codes);
       setDocsByAuto(new Map(Array.from(docsMap.entries()).map(([k, v]) => [k, v.docs])));
       setRemarksByAuto(new Map(Array.from(remarksMap.entries()).map(([k, v]) => [k, v.remarks])));
+      setLatestLoanIdByAuto(latestLoanIdMap);
 
       // Aggregate repayments (paid) per autoNumber
       const paid = new Map();
@@ -327,7 +333,88 @@ export function CustomerForm() {
                           : '—';
                       })()
                     }</td>
-                    <td className="py-2 pr-4 whitespace-pre-wrap text-xs text-gray-700">{remarksByAuto.get(c.autoNumber) || '—'}</td>
+                    <td className="py-2 pr-4 whitespace-pre-wrap text-xs text-gray-700">
+                      {remarkEditDraft[c.autoNumber] != null ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                            value={remarkEditDraft[c.autoNumber]}
+                            maxLength={500}
+                            onChange={(e) => setRemarkEditDraft(prev => ({ ...prev, [c.autoNumber]: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            className="text-blue-600 disabled:opacity-60"
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const text = remarkEditDraft[c.autoNumber] || '';
+                              setRemarkEditSaving(prev => ({ ...prev, [c.autoNumber]: true }));
+                              try {
+                                let loanId = latestLoanIdByAuto.get(c.autoNumber);
+                                if (!loanId) {
+                                  const list = await loansApi.listByCustomer(c.autoNumber);
+                                  if ((list || []).length) {
+                                    let pick = list[0];
+                                    for (const l of list) {
+                                      const pd = pick?.loanDate ? new Date(pick.loanDate).getTime() : -Infinity;
+                                      const cd = l?.loanDate ? new Date(l.loanDate).getTime() : -Infinity;
+                                      if (cd > pd || (cd === pd && Number(l.id || 0) > Number(pick.id || 0))) pick = l;
+                                    }
+                                    loanId = pick?.id;
+                                  }
+                                }
+                                if (!loanId) throw new Error('No loan found');
+                                try {
+                                  await loansApi.update(loanId, { remarks: text });
+                                } catch (err) {
+                                  if (String(err).includes('404')) {
+                                    const list = await loansApi.listByCustomer(c.autoNumber);
+                                    if ((list || []).length) {
+                                      let pick = list[0];
+                                      for (const l of list) {
+                                        const pd = pick?.loanDate ? new Date(pick.loanDate).getTime() : -Infinity;
+                                        const cd = l?.loanDate ? new Date(l.loanDate).getTime() : -Infinity;
+                                        if (cd > pd || (cd === pd && Number(l.id || 0) > Number(pick.id || 0))) pick = l;
+                                      }
+                                      const fallbackId = pick?.id;
+                                      if (fallbackId != null) await loansApi.update(fallbackId, { remarks: text });
+                                    } else {
+                                      throw err;
+                                    }
+                                  } else {
+                                    throw err;
+                                  }
+                                }
+                                setRemarkEditDraft(prev => ({ ...prev, [c.autoNumber]: undefined }));
+                                await loadCustomers();
+                              } catch (e) { console.error('Save remark failed', e); }
+                              finally { setRemarkEditSaving(prev => ({ ...prev, [c.autoNumber]: false })); }
+                            }}
+                            disabled={!!remarkEditSaving[c.autoNumber]}
+                          >{remarkEditSaving[c.autoNumber] ? 'Saving...' : 'Save'}</button>
+                          <button
+                            type="button"
+                            className="text-gray-600"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRemarkEditDraft(prev => ({ ...prev, [c.autoNumber]: undefined })); }}
+                          >Cancel</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="whitespace-pre-wrap text-xs text-gray-700">{remarksByAuto.get(c.autoNumber) || '—'}</span>
+                          {latestLoanIdByAuto.get(c.autoNumber) != null && (
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline flex items-center gap-1"
+                              title="Edit remark"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRemarkEditDraft(prev => ({ ...prev, [c.autoNumber]: remarksByAuto.get(c.autoNumber) || '' })); }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2 pr-4">{formatDateDMY(c.createdAt)}</td>
                     <td className="py-2 pr-4">
                       <button

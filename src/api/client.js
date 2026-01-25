@@ -47,6 +47,7 @@ export const loansApi = {
   listByRange: (start, end) => request(`/loans/range?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
   listByCustomer: (customerId) => request(`/loans/customer/${customerId}`),
   create: (data) => request('/loans', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/loans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 // Repayments

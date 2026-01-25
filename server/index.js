@@ -228,6 +228,25 @@ app.post('/api/loans', async (req, res) => {
   res.status(201).json(row);
 });
 
+app.put('/api/loans/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const existing = await getItem('loanApplications', id);
+    if (!existing) return res.status(404).json({ error: 'Loan not found' });
+    const payload = req.body || {};
+    const allowed = ['remarks', 'docs'];
+    const updates = {};
+    for (const k of allowed) if (payload[k] != null) updates[k] = payload[k];
+    if (updates.remarks != null) updates.remarks = String(updates.remarks).slice(0, 500);
+    if (!Object.keys(updates).length)
+      return res.status(400).json({ error: 'No valid fields to update' });
+    const updated = await updateItem('loanApplications', id, updates);
+    res.json(await mapDocs(updated));
+  } catch {
+    res.status(500).json({ error: 'Failed to update loan' });
+  }
+});
+
 /* =========================
    REPAYMENTS  ✅ FIXED
    ========================= */
