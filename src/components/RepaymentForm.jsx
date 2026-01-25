@@ -32,6 +32,7 @@ export function RepaymentForm() {
   const [customers, setCustomers] = useState([]);
   const [promisedEditing, setPromisedEditing] = useState({});
   const [promisedSaving, setPromisedSaving] = useState({});
+  const [remarkSaving, setRemarkSaving] = useState({});
   const [duesDate, setDuesDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [remarkDraft, setRemarkDraft] = useState({});
   
@@ -77,9 +78,11 @@ export function RepaymentForm() {
         const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
         // Build a map of loanId -> total paidAmount in this month
         const paidSumByLoanForMonth = new Map();
+        const anyRepLoanIdsForMonth = new Set();
         (repsForMonth || []).forEach(r => {
           if (r.loanId == null) return;
           const key = String(r.loanId);
+          anyRepLoanIdsForMonth.add(key);
           paidSumByLoanForMonth.set(key, (paidSumByLoanForMonth.get(key) || 0) + (Number(r.paidAmount) || 0));
         });
         const day = sel.getUTCDate();
@@ -106,6 +109,8 @@ export function RepaymentForm() {
 
         const virtualRows = (loans || [])
           .filter(l => l.dueDay != null && Number(l.dueDay) === day)
+          // If any repayment record exists in this month for the loan, do not generate a virtual row
+          .filter(l => !anyRepLoanIdsForMonth.has(String(l.id)))
           // Exclude loans that are closed or fully settled up to this month end
           .filter(l => {
             if (String(l.status || '').toLowerCase() === 'closed') return false;
@@ -146,6 +151,7 @@ export function RepaymentForm() {
                 }
               }
             } catch {}
+            if (missed <= 0) return null;
             return {
               id: `loan-${l.id}-${yyyymm}`,
               loanId: l.id,
@@ -161,8 +167,19 @@ export function RepaymentForm() {
             };
           })
           .filter(Boolean);
-        const rows = duesMode === 'actual' ? unpaid : ([...(virtualRows || []), ...unpaid]);
-        setDueToday(rows);
+        const combined = duesMode === 'actual' ? unpaid : ([...(virtualRows || []), ...unpaid]);
+        const pick = new Map();
+        for (const r of combined) {
+          const key = `${String(r.loanId ?? '')}|${r.dueDate}`;
+          const isActual = !String(r.id).startsWith('loan-');
+          const prev = pick.get(key);
+          if (!prev) pick.set(key, r);
+          else {
+            const prevIsActual = !String(prev.id).startsWith('loan-');
+            if (isActual && !prevIsActual) pick.set(key, r);
+          }
+        }
+        setDueToday(Array.from(pick.values()));
       } catch (e) {
         console.error('Failed to load dues/customers', e);
       }
@@ -187,9 +204,11 @@ export function RepaymentForm() {
       const unpaid = (dues || []).filter(d => Number(d.isPaid) === 0);
       // Build a map of loanId -> total paidAmount in this month
       const paidSumByLoanForMonth = new Map();
+      const anyRepLoanIdsForMonth = new Set();
       (repsForMonth || []).forEach(r => {
         if (r.loanId == null) return;
         const key = String(r.loanId);
+        anyRepLoanIdsForMonth.add(key);
         paidSumByLoanForMonth.set(key, (paidSumByLoanForMonth.get(key) || 0) + (Number(r.paidAmount) || 0));
       });
       const day = sel.getUTCDate();
@@ -215,6 +234,8 @@ export function RepaymentForm() {
 
       const virtualRows = (loans || [])
         .filter(l => l.dueDay != null && Number(l.dueDay) === day)
+        // If any repayment record exists in this month for the loan, do not generate a virtual row
+        .filter(l => !anyRepLoanIdsForMonth.has(String(l.id)))
         // Exclude loans that are closed or fully settled up to this month end
         .filter(l => {
           if (String(l.status || '').toLowerCase() === 'closed') return false;
@@ -271,8 +292,19 @@ export function RepaymentForm() {
           };
         })
         .filter(Boolean);
-      const rows = duesMode === 'actual' ? unpaid : ([...(virtualRows || []), ...unpaid]);
-      setDueToday(rows);
+      const combined = duesMode === 'actual' ? unpaid : ([...(virtualRows || []), ...unpaid]);
+      const pick = new Map();
+      for (const r of combined) {
+        const key = `${String(r.loanId ?? '')}|${r.dueDate}`;
+        const isActual = !String(r.id).startsWith('loan-');
+        const prev = pick.get(key);
+        if (!prev) pick.set(key, r);
+        else {
+          const prevIsActual = !String(prev.id).startsWith('loan-');
+          if (isActual && !prevIsActual) pick.set(key, r);
+        }
+      }
+      setDueToday(Array.from(pick.values()));
     } catch (e) { console.error(e); }
   };
 
@@ -734,10 +766,55 @@ export function RepaymentForm() {
                                 setPromisedSaving(prev => ({ ...prev, [r.id]: true }));
                                 try {
                                   const iso = new Date(`${newDateStr}T00:00:00.000Z`).toISOString();
-                                  const payload = { dueDate: iso };
+                                  const isVirtual = String(r.id).startsWith('loan-');
                                   const rem = remarkDraft[r.id];
-                                  if (rem != null) payload.remarks = rem;
-                                  await repaymentsApi.update(r.id, payload);
+
+                                  if (isVirtual) {
+                                    const dueAmt = Number(r.dueAmount || 0) || 0;
+
+                                    // 🔥 check if repayment already exists for this loan in that month
+                                    const d = new Date(iso);
+                                    const monthStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+                                    const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59));
+
+                                    const existing = await repaymentsApi.listByRange(
+                                      monthStart.toISOString(),
+                                      monthEnd.toISOString()
+                                    );
+
+                                    const sameLoan = (existing || []).find(x =>
+                                      String(x.loanId) === String(r.loanId)
+                                    );
+
+                                    if (sameLoan) {
+                                      // ✅ update instead of duplicate create
+                                      await repaymentsApi.update(sameLoan.id, {
+                                        dueDate: iso,
+                                        remarks: rem != null ? rem : sameLoan.remarks
+                                      });
+                                    } else {
+                                      // ✅ create only first time
+                                      await repaymentsApi.create({
+                                        vehicleNumber: r.vehicleNumber || '',
+                                        customerId: r.customerId ?? null,
+                                        customerName: r.customerName || '',
+                                        contact: '',
+                                        loanId: r.loanId ?? null,
+                                        dueDate: iso,
+                                        dueAmount: dueAmt,
+                                        fine: Number(r.fine || 0),
+                                        paidAmount: 0,
+                                        pendingAmount: dueAmt,
+                                        isPaid: 0,
+                                        remarks: rem != null ? rem : (r.remarks || ''),
+                                      });
+                                    }
+                                  } else {
+                                    const payload = { dueDate: iso };
+                                    if (rem != null) payload.remarks = rem;
+                                    await repaymentsApi.update(r.id, payload);
+                                  }
+
                                   setPromisedEditing(prev => ({ ...prev, [r.id]: undefined }));
                                   await reloadDueToday();
                                 } catch (e) {
@@ -759,13 +836,56 @@ export function RepaymentForm() {
                               onClick={async () => {
                                 // Allow saving just the remark without changing date
                                 try {
+                                  setRemarkSaving(prev => ({ ...prev, [r.id]: true }));
                                   const rem = remarkDraft[r.id];
                                   if (rem == null || rem === r.remarks) return;
-                                  await repaymentsApi.update(r.id, { remarks: rem });
+
+                                  const isVirtual = String(r.id).startsWith('loan-');
+
+                                  if (isVirtual) {
+                                    const dueAmt = Number(r.dueAmount || 0) || 0;
+
+                                    const d = new Date(r.dueDate);
+                                    const monthStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+                                    const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59));
+
+                                    const existing = await repaymentsApi.listByRange(
+                                      monthStart.toISOString(),
+                                      monthEnd.toISOString()
+                                    );
+
+                                    const sameLoan = (existing || []).find(x =>
+                                      String(x.loanId) === String(r.loanId)
+                                    );
+
+                                    if (sameLoan) {
+                                      await repaymentsApi.update(sameLoan.id, { remarks: rem });
+                                    } else {
+                                      await repaymentsApi.create({
+                                        vehicleNumber: r.vehicleNumber || '',
+                                        customerId: r.customerId ?? null,
+                                        customerName: r.customerName || '',
+                                        contact: '',
+                                        loanId: r.loanId ?? null,
+                                        dueDate: r.dueDate,
+                                        dueAmount: dueAmt,
+                                        fine: Number(r.fine || 0),
+                                        paidAmount: 0,
+                                        pendingAmount: dueAmt,
+                                        isPaid: 0,
+                                        remarks: rem,
+                                      });
+                                    }
+                                  } else {
+                                    await repaymentsApi.update(r.id, { remarks: rem });
+                                  }
+
                                   await reloadDueToday();
                                 } catch (e) { console.error('Failed to save remark', e); }
+                                finally { setRemarkSaving(prev => ({ ...prev, [r.id]: false })); }
                               }}
                               variant="outline"
+                              disabled={!!remarkSaving[r.id]}
                             >Save Remark</Button>
                           </div>
                         )}

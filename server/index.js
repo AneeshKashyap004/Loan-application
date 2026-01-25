@@ -272,6 +272,18 @@ app.get('/api/repayments/due-today', async (req, res) => {
 
 app.post('/api/repayments', async (req, res) => {
   try {
+    const b = req.body || {};
+    if (b.loanId != null && b.dueDate != null) {
+      const rows = await listCollection('repayments');
+      const existingMatch = rows.find(r => String(r.loanId) === String(b.loanId) && r.dueDate === b.dueDate && Number(r.isPaid || 0) === 0);
+      if (existingMatch) {
+        const updates = { ...b };
+        delete updates.id;
+        const updated = await updateItem('repayments', String(existingMatch.id), updates);
+        return res.json(updated);
+      }
+    }
+
     const id = String(await nextId('repayments'));
     const row = { id: Number(id), ...req.body, createdAt: nowIso() };
     await putItem('repayments', id, row);
@@ -285,7 +297,46 @@ app.put('/api/repayments/:id', async (req, res) => {
   try {
     const id = String(req.params.id);
     const existing = await getItem('repayments', id);
-    if (!existing) return res.status(404).json({ error: 'Repayment not found' });
+    if (!existing) {
+      const b = req.body || {};
+      const hasIdentifiers = (
+        b.loanId != null && b.customerId != null && b.dueDate != null && b.dueAmount != null
+      );
+      if (!hasIdentifiers) {
+        return res.status(404).json({ error: 'Repayment not found' });
+      }
+
+      if (b.loanId != null && b.dueDate != null) {
+        const rows = await listCollection('repayments');
+        const existingMatch = rows.find(r => String(r.loanId) === String(b.loanId) && r.dueDate === b.dueDate && Number(r.isPaid || 0) === 0);
+        if (existingMatch) {
+          const updates = { ...b };
+          delete updates.id;
+          const updated = await updateItem('repayments', String(existingMatch.id), updates);
+          return res.json(updated);
+        }
+      }
+
+      const newId = String(await nextId('repayments'));
+      const dueAmountNum = Number(b.dueAmount) || 0;
+      const row = {
+        id: Number(newId),
+        loanId: b.loanId,
+        customerId: b.customerId,
+        customerName: b.customerName || '',
+        vehicleNumber: b.vehicleNumber || '',
+        dueDate: b.dueDate,
+        dueAmount: dueAmountNum,
+        fine: Number(b.fine || 0),
+        paidAmount: Number(b.paidAmount || 0),
+        pendingAmount: b.pendingAmount != null ? Number(b.pendingAmount) : Math.max(0, dueAmountNum - Number(b.paidAmount || 0)),
+        isPaid: Number(b.isPaid || 0),
+        remarks: b.remarks || '',
+        createdAt: nowIso(),
+      };
+      await putItem('repayments', newId, row);
+      return res.status(201).json(row);
+    }
 
     const payload = req.body || {};
     const allowed = ['dueDate', 'remarks', 'paidAmount', 'isPaid'];
