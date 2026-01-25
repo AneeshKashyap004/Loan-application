@@ -19,7 +19,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 8789;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(morgan('dev'));
 
 /* =========================
@@ -401,7 +401,8 @@ app.get('/api/uploads/signed', async (req, res) => {
     // In that case, redirect to the local static uploads path with a leading slash.
     if (!/^https?:\/\//i.test(url)) {
       const target = url.startsWith('/') ? url : `/${url}`;
-      return res.redirect(302, target);
+      const origin = `${req.protocol}://${req.get('host')}`;
+      return res.redirect(302, `${origin}${target}`);
     }
     res.redirect(302, url);
   } catch {
